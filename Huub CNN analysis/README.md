@@ -1,5 +1,5 @@
 ------------------
-CODE originally made from Chris van der Togt, Copied from the Github/MEIs_mice folder in the MVP server
+CODE originally made by Paolo Papale, forked from the HersenInstituut/MEIs_mice 
 ------------------
 
 ## MEIs_mice
