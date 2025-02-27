@@ -1,3 +1,7 @@
+------------------
+CODE originally made by Paolo Papale, forked from the HersenInstituut/MEIs_mice 
+------------------
+
 ## MEIs_mice
 
 <img src="/_readme/meis.png" width="100">
