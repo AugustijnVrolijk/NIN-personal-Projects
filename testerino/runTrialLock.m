@@ -58,18 +58,19 @@ xAxis = dataTL.Res.ax;
 [spikeProbMeanSig, spikeProbStdSig] = getTrialAvg(TLspikeprob);
 [spikeTimeMeanSig, spikeTimeStdSig] = getTrialAvg(TLspikeTime);
 
-function plotTrials()
+%{
+function plotTrials(trials, inputSig)
     arguments (Input)
         trials (:, 1) double %input array showing frames at which trials occured 
     end
     arguments (Input, Repeating)
         inputSig (: , :) double %input signals 
     end
-    for
+    for i=1:1
         plot(xAxis, [spikeTimeMeanSig(:, 1), spikeProbMeanSig(:,1),meanSig(:,1)])
     end
 end
-
+%}
 
 
 function [meanSig, stdSig] = getTrialAvg(TLsignal)
