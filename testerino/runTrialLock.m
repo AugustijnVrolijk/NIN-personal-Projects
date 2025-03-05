@@ -1,21 +1,26 @@
 
-filename = ["Ajax_20241012_001_normcorr_SPSIG_Res.mat", "Ajax_20241012_001_normcorr_SPSIG.mat"];
-filepath = "C:\Users\augus\NIN Stuff\data\koenData\";
-fullFileRes = fullfile(filepath, filename(1));
-fullFile = fullfile(filepath, filename(2));
+dataFilename = ["Ajax_20241012_001_normcorr_SPSIG_Res.mat"]; %data to be trial locked
+infoFilename = ["Ajax_20241012_001_normcorr_SPSIG.mat"]; %file with frame and line info
+filepath = "C:\Users\augus\NIN Stuff\data\koenData\"; %path to files
 
-dataTL = load(fullFileRes);
-data = load(fullFile);
+fullFileData = fullfile(filepath, dataFilename);
+fullFileInfo = fullfile(filepath, infoFilename);
 
-rois = struct2table(dataTL.info.rois);
+data = load(fullFileData);
+info = load(fullFileInfo);
 
-outputVals = trialLockMult(dataTL.info.frame, ...
-    data.sigCorrected, data.spike_prob,  data.spike_timesSig,...
-    lines=dataTL.info.line, py=rois.py(:), ...
-    framesBeforeStim=dataTL.info.framesbeforstim, ...
-    framesAfterStim=dataTL.info.framesafterstim);
+rois = struct2table(info.info.rois);
 
-[TLsig, TLspikeprob, TLspikeTime] = outputVals{:};
+outputVals = trialLockMult(info.info.frame, ... % array, 1* number of stimuli, frame at which stimuli happens
+...
+    data.sigCorrected, data.spike_prob,  data.spike_timesSig,...   %add however many signals you want triallocked
+...
+    lines=info.info.line, ... %array, 1* number of stimuli, line at which the frame is at
+    py=rois.py(:), ... %array, 1* number of neurons, y position for neuron n
+    framesBeforeStim=info.info.framesbeforstim, ... 
+    framesAfterStim=info.info.framesafterstim);
+
+[TLsig, TLspikeprob, TLspikeTime] = outputVals{:};    %outputVals, has all trial locked sigs in cell array in order you put them in
 
 function outputSigs = trialLockMult(trials, inputSig, info)
     arguments (Input)
@@ -41,24 +46,15 @@ function outputSigs = trialLockMult(trials, inputSig, info)
         framesAfterStim=info.framesAfterStim);
     end
 end
-%{
 
-function trialLockedSig = trialLockSignal(inputSig, trials, info)
-     arguments (Input)
-        inputSig (: , :) double %input signal 
-        trials (:, 1) double %input array showing frames at which trials occured
-        info.lines (:, 1) double = NaN %input array showing where the frame update line was at stimulus onset
-        info.py (:, 1) double = NaN %input array showing the position of neuron x along the y dimension
-        info.framesBeforeStim double = 8 %number of frames to show before stim
-        info.framesAfterStim double = 16 %number of frames to show after stim
-%}
+%{
 xAxis = dataTL.Res.ax;
 
 [meanSig, stdSig] = getTrialAvg(TLsig);
 [spikeProbMeanSig, spikeProbStdSig] = getTrialAvg(TLspikeprob);
 [spikeTimeMeanSig, spikeTimeStdSig] = getTrialAvg(TLspikeTime);
 
-%{
+
 function plotTrials(trials, inputSig)
     arguments (Input)
         trials (:, 1) double %input array showing frames at which trials occured 
