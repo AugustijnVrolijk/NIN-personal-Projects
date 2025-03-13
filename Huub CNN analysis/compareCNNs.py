@@ -308,8 +308,8 @@ def main():
     first_weight_tensor = mouse_model.w_s #shape nNeurons, 1, img, 1
     second_weight_tensor = mouse_model.w_f #shape 1, nNeurons, 1, features
     analyseWeights(second_weight_tensor)
-    breakpoint()
-    weightMatrix(first_weight_tensor, True)
+    weightMatrix(first_weight_tensor)
+
     return 
 
 if __name__ == "__main__":

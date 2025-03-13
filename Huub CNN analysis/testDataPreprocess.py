@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import scipy
 
 def printTLData(data):
     #format is time, trials, neuron
@@ -198,55 +199,91 @@ def main():
     
     return
 
-def weightMatrix():
-    size = 7
-    neurons = 2
+def wholeRunThrough():
+    filename = r"C:\Users\augus\NIN Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat"
+    # Load data
+    with open(filename, 'rb') as f:
+        info = scipy.io.loadmat(f)['info']
 
-    temp = np.arange((size*size*neurons), dtype=np.float64).reshape(neurons, size, size)
-    tensor = torch.from_numpy(temp)
-    tensor.requires_grad_(True)
-    tensor = tensor.unsqueeze(0)
-    print(tensor.shape)
-    print(tensor)
+    # Define training and validation stimuli based on data length
+    if len(info['StimTimes']) == 1000:
+        train_stims = np.arange(1, 651)
+        val_stims = np.arange(651, 1000, 10)
+        reps = np.arange(0, 10)
+    else:
+        train_stims = np.arange(1, 3601)
+        val_stims = np.arange(3601, 4001, 10)
+        reps = np.arange(0, 10)
+        
+    # Load and process ROI data
+    with open(filename, 'rb') as f:
+        data = scipy.io.loadmat(f)
 
-    final_tensor = tensor.view(tensor.shape[0],tensor.shape[1],tensor.shape[2]*tensor.shape[3],1)
-    print(final_tensor.shape)
-    print(final_tensor)
 
-    #detach the gradient, so its just a tensor of numbers
-    #convert the tensor to a numpy array
-    #squeeze out the excess dimensions of size 1
-    xVals = final_tensor.detach().numpy().squeeze() 
-    nNeurons, imgLen = xVals.shape
-    print(xVals.shape)
-    print(nNeurons, imgLen)
-    print(xVals)
+    tb = data['Res']['ax'][0][0].squeeze()
+    print(tb)
+    print(type(tb))
+    print(tb.shape)
+    gt = np.logical_and(tb > 0.01, tb < 0.5)
+    base_t = np.logical_and(tb > -0.2, tb < 0)
+    stims = info['Stim'][0][0]['Log'][0][0].squeeze()
+  
+    resp = np.squeeze(data['Res']['CaDeconCorrected'][0][0])
+    # Define validation trials
+    val_trials = []
+    for i in range(len(val_stims)):
+        val_trials.append(np.arange(val_stims[i], val_stims[i] + 10))
+    val_trials = np.asarray(val_trials)
 
-    reshapedXVals = xVals.reshape(nNeurons, size, size)
-    meanXVals = np.mean(reshapedXVals, axis=0)
-    print(meanXVals.shape)
-    print(meanXVals)
+    # Calculate base signal and response
+    base = np.squeeze(np.nanstd(resp[base_t, :, :], axis=(0,1)))
+    signal = np.squeeze(np.nanmax(np.nanmean(resp, axis=1), axis=0))
 
-    meanTemp = np.mean(temp, axis=0)
-    """
-    meanXVals = np.mean(xVals, axis=0)
-    reshapedMeanXVals = meanXVals.reshape(size, size)
-    print(reshapedMeanXVals.shape)
-    print(reshapedMeanXVals)
-    """
-    for n in range(nNeurons):
-        plt.imshow(reshapedXVals[n, :, :], cmap='bwr')
-        plt.colorbar()        
-        plt.show()
-        pass
-    
-    plt.imshow(meanXVals, cmap='bwr')
-    plt.colorbar() 
-    plt.show()
-    plt.imshow(meanTemp, cmap='bwr')
-    plt.colorbar() 
-    plt.show()
+    # Normalize response and calculate data
+    norm_resp = []
+    for i in range(resp.shape[2]):
+        norm_resp.append(resp[:, :, i] / signal[i])
+    norm_resp = np.moveaxis(np.asarray(norm_resp),0,-1)
+
+    data_v1 = []
+    for i in range(len(train_stims)):
+        data_v1.append(np.nanmean(np.squeeze(norm_resp[gt, np.where(stims == train_stims[i]), :]), axis=0))
+
+    val_idx = np.arange(val_trials.min(),val_trials.max())
+    ind = 0
+    all_temps = []
+    for i in range(val_trials.shape[0]):
+        temp = []
+        for j in range(val_trials.shape[1]):
+            temp.append(np.squeeze(norm_resp[gt, np.where(stims == val_trials[ind, j]), :]))
+        
+        temp = np.asarray(temp)
+        all_temps.append(np.squeeze(np.nanmean(temp, axis=1)))
+        data_v1.append(np.squeeze(np.nanmean(temp,axis=(0,1))))
+        ind += 1
+        
+    #print(np.asarray(all_reps).shape)
+    #print(np.asarray(all_temps).shape)
+    all_temps = np.asarray(all_temps)
+    all_reps = np.moveaxis(np.moveaxis(np.asarray(all_temps),0,-1),1,0)
+    data_v1 = np.transpose(np.asarray(data_v1))
+    trialvals = np.arange(1, data_v1.shape[1] + 1)
+
+    # Calculate reliability
+    reliab = []
+    for i in range(all_temps.shape[-1]):
+        temp = []
+        for j in range(all_temps.shape[1]):
+            temp.append(np.corrcoef(np.nanmean(np.squeeze(all_temps[:, reps != j, i]), axis=1),np.squeeze(all_temps[:, j, i]))[0, 1])
+        reliab.append(np.asarray(temp))
+    reliab = np.asarray(reliab)
+    mean_reliab = np.nanmean(reliab, axis=1)
+
+    # Calculate SNR (Signal to Noise Ratio)
+    SNR = signal / base
+
+    breakpoint()
     return
 
 if __name__ == '__main__':
-    main()
+    wholeRunThrough()
