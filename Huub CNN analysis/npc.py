@@ -163,7 +163,7 @@ def format_data(proc,prefix,date,out_path,gen_path,root_dir,subdirs,subsubdirs,a
                                         temp.append(np.corrcoef(np.nanmean(np.squeeze(all_temps[:, reps != j, i]), axis=1),np.squeeze(all_temps[:, j, i]))[0, 1])
                                     reliab.append(np.asarray(temp))
                                 reliab = np.asarray(reliab)
-                                mean_reliab = np.mean(reliab, axis=1)
+                                mean_reliab = np.nanmean(reliab, axis=1)
          
                                 # Calculate SNR (Signal to Noise Ratio)
                                 SNR = signal / base

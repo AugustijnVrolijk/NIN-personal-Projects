@@ -1,6 +1,6 @@
 
-dataFilename = ["Ajax_20241012_001_normcorr_SPSIG_Res.mat"]; %data to be trial locked
-infoFilename = ["Ajax_20241012_001_normcorr_SPSIG.mat"]; %file with frame and line info
+dataFilename = ["Ajax_20241012_001_normcorr_SPSIG.mat"]; %data to be trial locked
+infoFilename = ["Ajax_20241012_001_normcorr_SPSIG_Res.mat"]; %file with frame and line info
 filepath = "C:\Users\augus\NIN Stuff\data\koenData\"; %path to files
 
 fullFileData = fullfile(filepath, dataFilename);

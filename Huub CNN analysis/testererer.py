@@ -40,7 +40,7 @@ for i in range(1000):
 """
 
 gen_path = r"C:\Users\augus\NIN Stuff\data\Huub data"
-output_filename = os.path.join(gen_path,'Test cross validation scores')  
+output_filename = os.path.join(gen_path,'Test_cross_validation_scores_mixed4d')  
 
 
 gridfile = open(output_filename,"rb")

@@ -4,8 +4,6 @@ from torch import Tensor, nn, FloatTensor
 import os
 import pickle
 import numpy as np
-import time
-from torchinfo import summary
 from lucent.modelzoo import inceptionv1
 from typing import Iterable, Callable
 import inspect
@@ -304,13 +302,19 @@ def main():
     gen_path = r"C:\Users\augus\NIN Stuff\data\Huub data"
     group_name = "Huub_" 
     condition = "NaturalImages_darkReared_VISa_baseline"
-    mouse_model = fetchModel(gen_path, group_name, condition)
+    mouse_model = fetchModel(gen_path, group_name, condition, True)
     first_weight_tensor = mouse_model.w_s #shape nNeurons, 1, img, 1
     second_weight_tensor = mouse_model.w_f #shape 1, nNeurons, 1, features
+    exit()
     analyseWeights(second_weight_tensor)
     weightMatrix(first_weight_tensor)
 
     return 
 
 if __name__ == "__main__":
-    main()
+    #main()
+    pretrained_model = inceptionv1(pretrained=True)
+    layer = "mixed3b"
+    n_neurons = 50
+    temp = Model(pretrained_model,layer,n_neurons,device='cpu')
+    print("hello")
