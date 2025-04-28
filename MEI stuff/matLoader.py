@@ -1,9 +1,8 @@
 import scipy
 import numpy as np
+import mat73
 
-from collections import deque, UserDict
 from pathlib import Path
-
 from collections import UserDict
 
 class matData(UserDict):
@@ -33,12 +32,15 @@ class matData(UserDict):
         return value
 
 class matLoader():
-
     @staticmethod
     def load(rawpath:str) -> matData:
         path = Path(rawpath)
         if matLoader._checkFile(path):
-            data, _ = matLoader._loadScipy(path) #the _ is the file version
+            try:
+                data = matLoader._loadRaw(path)
+            except (NotImplementedError):
+                return matData(mat73.loadmat(path))
+            
             datadict = matLoader._unwrap(data)
             return matData(datadict)
         
@@ -53,17 +55,18 @@ class matLoader():
         return check
     
     @staticmethod
-    def _loadScipy(path:Path):
+    def _loadRaw(path:Path):
         with open(path, 'rb') as f:
             data = scipy.io.loadmat(f)
+
         if not isinstance(data, dict):
             TypeError(f"Scipy did not load {path} as the required dict")
 
-        fileVers = data["__header__"].split()[1] #not doing anything with this but could be useful
-        return data, fileVers
+        #fileVers = data["__header__"].split()[1] #not doing anything with this but could be useful
+        return data
 
     @staticmethod
-    def _getFromWrap(wrapped:np.ndarray|dict):
+    def _getFromWrap(wrapped:np.ndarray|dict) -> np.ndarray|dict|None:
         iswrapped = True
         if isinstance(wrapped, dict):
             iswrapped = False
@@ -72,8 +75,18 @@ class matLoader():
             iswrapped = False
             wrapped = wrapped.squeeze()
             if isinstance(wrapped.dtype, np.dtypes.ObjectDType):
-                wrapped = wrapped.item()
-                iswrapped = True
+                if wrapped.ndim == 0:
+                    if wrapped.size == 0:
+                        raise NotImplementedError("there should be a bug if ndim and size == 0")
+
+                    wrapped = wrapped.item()
+                    iswrapped = True
+
+                elif wrapped.size == 0:
+                    wrapped = None
+                else:
+                    wrapped = matLoader._collapseStruct(wrapped)
+
             elif isinstance(wrapped.dtype, np.dtypes.VoidDType):
                 wrapped = matLoader._voidToDict(wrapped)
 
@@ -81,79 +94,61 @@ class matLoader():
     
     @staticmethod
     def _voidToDict(voidArr:np.ndarray) -> dict:
-        """
-        iterate through the dtype as the idx and then add their values as keys, dont need to unwrap their values as _unwrap will do this
+        if not isinstance(voidArr.dtype, np.dtypes.VoidDType):
+            raise TypeError("_voidToDict requries a numpy array of void type")
 
-        look at exception cases where I may need to _collapseStruct: 
+        finalDict = {}
+
+        for name in voidArr.dtype.names:
+            finalDict[name] = voidArr[name]
         
-        data['info']['calibration'].squeeze().item().squeeze()['uv'].shape
-(13,)
-data['info']['calibration'].squeeze().item().squeeze()['uv'].dtype
-dtype('O')
-data['info']['calibration'].squeeze().item().squeeze()['uv'].item()
+        return finalDict
 
-Error: (considered as 13 different items so cant shrink down to one with item())
-        """
-        return 
-
-    def _collapseStruct():
+    @staticmethod
+    def _collapseStruct(array: np.ndarray) -> np.ndarray:
         #collapse structure arrays into a single structure if the fields are the same
         #otherwise we get an object with an attribute for every single seperate struct arr, 
         #with duplicate fields between them
-        """
-        i.e. arr with struct: 
-            x    y   z
-        1
-        2
-        3
+        if not isinstance(array.dtype, np.dtypes.ObjectDType):
+            raise TypeError(f"_collapseStruct requires numpy array of type object, cur dtype: {array.dtype}")
+        elif array.ndim != 1:
+            raise NotImplementedError(f"array must have dimensionality one, please squeeze beforehand, cur ndim: {array.ndim}")
+            # it is possible to collapse for more than one dim, need another for loop to iterate based on array.ndim        
+            #check each sub array has the same properties
 
-        would be stored as: arr.keys() = (1{(x,y,z)},2{(x,y,z)},3{(x,y,z)})
-        arr.1.keys() = (x,y,z)
-        and we want to collapse to:
-        arr.keys() = (x,y,z)
-        where each x y and z attribute has 3 values
-        """
-        return
+        baseShape = array[0].shape
+        baseType = array[0].dtype
+
+        for arr in array:
+            if arr.shape != baseShape:
+                Warning("object does not have collapsible structure")
+                return array
+            
+            baseType = np.promote_types(baseType, arr.dtype)
+
+        finalArr = np.stack(array, axis=0, dtype=baseType).squeeze()
+        return finalArr
 
     @staticmethod
-    def _unwrap(data:dict):
+    def _unwrap(data:dict) -> dict:
         finalData = dict()
 
         toIgnore = ['__header__', '__version__', '__globals__']
         keyStack = [key for key in data.keys() if key not in toIgnore]
 
         for curKey in keyStack:
-            print(curKey)
-
             unwrappedData = matLoader._getFromWrap(data[curKey])
-            if isinstance(data[curKey], dict):
-                finalData[curKey] = matLoader._unwrap(data[curKey])
+
+            if isinstance(unwrappedData, dict):
+                temp = matLoader._unwrap(unwrappedData)
+                finalData[curKey] = temp
             else:
                 finalData[curKey] = unwrappedData
 
         return finalData
     
-
-
 def loadMat(path):
     return matLoader.load(path)
 
 if __name__ == "__main__":
-    testPath = r"C:\Users\augus\NIN_Stuff\data\koenData\old\Ajax_20241012_001_normcorr_SPSIG_Res.mat"
-    testLoad = matLoader()
-    data = testLoad.load(testPath)
-    """
-    testStruct = matData()
-    testStruct.val1 = 12412
-    testStruct.path = testPath
-    print(testStruct.keys())
-    print(testStruct["val1"])
-    testStruct.val4 = matData()
-    print(testStruct.keys())
-
-
-    testStruct.val4.testerino1 = 999
-    testStruct.val4.testerino5 = "fdsfsdsjfusda"
-    print(testStruct.val4["testerino5"])
-    print(testStruct.keys())
-    """
+    pass
