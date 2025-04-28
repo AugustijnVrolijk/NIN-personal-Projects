@@ -1,10 +1,12 @@
 import numpy as np
 import os
+import PIL
 
 from typing import Callable, Any
 from pathlib import Path
 from PIL import Image
 from matLoader import loadMat
+from scipy.ndimage import gaussian_filter
 
 class npImage():
     def __init__(self, image:Any, **kwargs):
@@ -12,17 +14,18 @@ class npImage():
         if isinstance(image, np.ndarray) :
             self.__init_from_Arr(image)
             
-        elif isinstance(image, Image, **kwargs):
-            self._init_from_Image(image)
+        elif isinstance(image, PIL.Image.Image):
+            self._init_from_Image(image, **kwargs)
 
-        elif isinstance(image, str, **kwargs):   
-            self._init_from_Path(image)
+        elif isinstance(image, str):   
+            self._init_from_Path(image, **kwargs)
     
     def __init_from_Arr(self, arr:np.ndarray):
         self.arr = arr
-        self.img = Image.fromarray(arr, mode='L')
+        corArr =  np.clip(arr, 0, 255).astype(np.uint8)
+        self.img = Image.fromarray(corArr, mode='L')
 
-    def _init_from_Image(self, image:Image, enforce=True):
+    def _init_from_Image(self, image:PIL.Image.Image, enforce=True):
 
         if enforce and not npImage._is_grayscale(image):
             raise TypeError("Given image is not black and white")
@@ -46,11 +49,16 @@ class npImage():
             arr = np.load(corPath)
             self.__init_from_Arr(arr)
 
-    def save(self, destPath:str, extension:str=None):
+    def save(self, destPath:str, extension:str|list=None):
         allowedExtension = [".npy", ".png", None]
 
         corPath = Path(destPath)
         if extension:
+            if isinstance(extension, list):
+                for ext in extension:
+                    newPath = f"{destPath}_{ext[1:]}"
+                    self.save(newPath, ext)
+                return
             extension = extension.lower().strip()
             if not extension in allowedExtension:
                 raise ValueError("unrecognised extension")
@@ -65,7 +73,7 @@ class npImage():
             self.img.save(corPath, format='PNG', optimize=True)
 
     @staticmethod
-    def _is_grayscale(img:Image):
+    def _is_grayscale(img:PIL.Image.Image):
         """
         Checks whether an image is grayscale.
         Accepts: Path to the image
@@ -84,36 +92,57 @@ class npImage():
                 return False
         
         return False  # Other modes (e.g. RGBA, P) not supported here
-    
-    def _update_img(self, arr):
-        self.img = Image.fromarray(arr, mode='L')
-    
-    def linearBoostContrast(self, format_max:int=255, clip = False) -> np.ndarray:
+
+    def linearBoostContrast(self, matrix:np.ndarray = None, format_max:int=255, save=True, **kwargs) -> np.ndarray:
         """
         linearly stretches matrix values so that the maximum becomes 255.
         Output is returned as uint8 for PNG saving.
         """
-        max_val = np.max(self.arr)
+        if matrix == None:
+            matrix = self.arr
+
+        max_val = np.max(matrix)
         if max_val == 0:
-            return self.arr # avoid divide-by-zero
+            return matrix # avoid divide-by-zero
         
-        contrast_stretched = self.arr * (format_max / max_val)
-        clipped_arr = np.clip(contrast_stretched, 0, format_max).astype(np.uint8)
+        contrast_stretched = matrix * (format_max / max_val)
 
-        self._update_img(clipped_arr)
+        if save:
+            self.__init_from_Arr(contrast_stretched)
+            
+        return contrast_stretched
+    
+    def gamma_correction(self, gamma:float, linearBoost=True, **kwargs) -> np.ndarray:
+        curMax = np.max(self.arr)
+        gamma_raw = np.power(self.arr, gamma)
 
-        if clip:
-            self.arr = clipped_arr
+        if linearBoost:
+            format_max = 255
         else:
-            self.arr = contrast_stretched
+            format_max = curMax
 
-        return self.arr
+        return self.linearBoostContrast(matrix=gamma_raw, format_max=format_max, **kwargs)
 
+    def blur(self, sigma:float, save=True, **kwargs):
+        blurred = gaussian_filter(self.arr, sigma=sigma, **kwargs)
+        
+        if save:
+            self.__init_from_Arr(blurred)
+            
+        return blurred
+
+    @staticmethod
+    def _normalise(arr:np.ndarray) -> np.ndarray:
+        min_val = np.min(arr)
+        max_val = np.max(arr)
+        normalized_array = (arr - min_val) / (max_val - min_val)
+        return normalized_array
+    
     @staticmethod
     def _checkPath(path:str|Path, corSuffix:str):
         return Path(os.path.splitext(path)[0] + corSuffix)
 
-def saveImg(img:Any, path, **kwargs):
+def saveImg(img:Any, path:str, **kwargs):
     tempImg = npImage(img, **kwargs)
     tempImg.save(path, **kwargs)
     return
@@ -138,9 +167,8 @@ def weighted_average_images(paths: list[str], weights: list[float]) -> np.ndarra
         total_matrix += weighted_matrix
 
     # Normalize by number of images
-    largerMatrix = total_matrix.astype(np.float128)
-    largerMatrix /= len(paths)
-    return largerMatrix
+    total_matrix /= len(paths)
+    return total_matrix
 
 def iterFolderConvert(func:Callable[..., Any], origin:str, destination:str, verbose:bool= False, **kwargs):
 
@@ -172,9 +200,10 @@ def main():
     npy_to_png(matrix=testVal, png_path=os.path.join(res, "test"))
     npy_to_png(matrix=boostedTest, png_path=os.path.join(res, "boostedtest"))
     """
-    testPath = r"C:\Users\augus\NIN_Stuff\data\koenData\old\Ajax_20241012_001_normcorr_SPSIG_Res.mat"
-    data = loadMat(testPath)
-    print("Done!")
+    testPath = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\4000imgNPY\0004.npy"
+    data = npImage(testPath)
+    data.blur(3,True)
+    data.save(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\4000imgResults\tester.png",[".png", ".npy"])
     return
 
 if __name__ == "__main__":
