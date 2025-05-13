@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image
 from functools import wraps
 from scipy.ndimage import gaussian_filter
+from tqdm import tqdm
 
 class npImage():
     def __init__(self, image:Any, **kwargs):
@@ -84,7 +85,7 @@ class npImage():
 
         #save for each extension
         for ext in extension:
-            cor_ext = extension.lower().strip()
+            cor_ext = ext.lower().strip()
             if not cor_ext in allowedExtension:
                 raise ValueError(f"unrecognised extension {cor_ext}")
             final_path = self._checkPath(corPath, cor_ext)
@@ -165,7 +166,8 @@ class npImage():
             w, h = self.img.size
             size = (int(w*size), int(h*size))
 
-        resized_img = self.img.resize(size)
+        resample = kwargs.pop("resample", None)
+        resized_img = self.img.resize(size, resample=resample)
         resized_arr = np.array(resized_img).astype(np.float64)
         if save:
             self._init_from_Image(resized_img)
@@ -179,11 +181,11 @@ class npImage():
         return t_r
 
     @staticmethod
-    def _normalise(arr:np.ndarray) -> np.ndarray:
+    def _normalise(arr:np.ndarray, newMax:int=1) -> np.ndarray:
         min_val = np.min(arr)
         max_val = np.max(arr)
         normalized_array = (arr - min_val) / (max_val - min_val)
-        return normalized_array
+        return normalized_array*newMax
     
     @staticmethod
     def _checkPath(path:str|Path, corSuffix:str):
@@ -226,9 +228,7 @@ def iterFolderFun(paths:list[str|Path|np.ndarray|PIL.Image.Image],
     if collect == True:
         results = [0] * len(paths)
 
-    for i, path in enumerate(paths):
-        if verbose:
-            print(f"\nProcessing {i+1}/{len(paths)}: {path}")
+    for i, path in enumerate(tqdm(paths)):
         
         img_obj = npImage(path)
         res = None

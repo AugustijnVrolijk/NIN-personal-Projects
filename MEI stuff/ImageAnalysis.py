@@ -140,5 +140,5 @@ def analyze_image_folder(folder_path, **kwargs):
 # Example usage
 if __name__ == "__main__":
     folder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images"
-    analyze_image_folder(folder, resize=False)
+    #analyze_image_folder(folder, resize=False)
     analyze_image(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images\0460.bmp", resize=False, save=True)
