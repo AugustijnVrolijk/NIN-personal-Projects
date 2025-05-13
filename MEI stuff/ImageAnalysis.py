@@ -40,22 +40,25 @@ def compute_edge_grid(img_gray, grid_size=(18, 32)):
             grid[i, j] = patch.mean()
     return grid
 
-def load_and_resize_image(image_path, **kwargs):
+def load_and_resize_image(image_path, resize = True,**kwargs):
     # Open image using PIL for robustness (handles JPEG, PNG, BMP, etc.)
     max_size = kwargs.pop("max_size", 512)
 
     img = Image.open(image_path).convert("L")  # Convert to grayscale directly
     # Compute scale to maintain aspect ratio
-    ratio = max_size / max(img.size)
-    new_size = tuple([int(x * ratio) for x in img.size])
-    img_resized = img.resize(new_size, Image.BILINEAR)
+    if resize:
+        print(resize)
+        ratio = max_size / max(img.size)
+        new_size = tuple([int(x * ratio) for x in img.size])
+        img_resized = img.resize(new_size, Image.BILINEAR)
 
-    # Optional: pad to make it square
-    new_img = Image.new("L", (max_size, max_size), color=0)
-    upper_left = ((max_size - new_size[0]) // 2, (max_size - new_size[1]) // 2)
-    new_img.paste(img_resized, upper_left)
+        # Optional: pad to make it square
+        new_img = Image.new("L", (max_size, max_size), color=0)
+        upper_left = ((max_size - new_size[0]) // 2, (max_size - new_size[1]) // 2)
+        new_img.paste(img_resized, upper_left)
+        img = new_img
 
-    return np.array(new_img)
+    return np.array(img)
 
 def analyze_image(image_path, save=False, **kwargs):
     image_path = Path(image_path)
@@ -64,7 +67,8 @@ def analyze_image(image_path, save=False, **kwargs):
         raise ValueError("Unsupported file format")
 
     image_id = image_path.stem  # e.g., '0003'
-    img_gray = load_and_resize_image(image_path, **kwargs)
+    resize = kwargs.pop("resize", True)
+    img_gray = load_and_resize_image(image_path, resize)
 
     saliency_map = compute_saliency_map(img_gray)
     entropy_map = compute_entropy_map(img_gray, **kwargs)
@@ -90,7 +94,7 @@ def analyze_image(image_path, save=False, **kwargs):
     return saliency_map, entropy_map, edge_grid
 
 
-def analyze_image_folder(folder_path):
+def analyze_image_folder(folder_path, **kwargs):
     saliency_sum = None
     entropy_sum = None
     edge_grid_sum = None
@@ -99,7 +103,7 @@ def analyze_image_folder(folder_path):
     for filename in tqdm(os.listdir(folder_path)):
         try:
             path = os.path.join(folder_path, filename)
-            saliency_map, entropy_map, edge_grid = analyze_image(path)
+            saliency_map, entropy_map, edge_grid = analyze_image(path, **kwargs)
 
             if saliency_sum is None:
                 saliency_sum = saliency_map
@@ -136,5 +140,5 @@ def analyze_image_folder(folder_path):
 # Example usage
 if __name__ == "__main__":
     folder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images"
-    analyze_image_folder(folder)
-    analyze_image(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images\0001.bmp", save=True)
+    analyze_image_folder(folder, resize=False)
+    analyze_image(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images\0460.bmp", resize=False, save=True)

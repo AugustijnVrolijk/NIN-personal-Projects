@@ -11,7 +11,10 @@ from scipy.ndimage import gaussian_filter
 
 class npImage():
     def __init__(self, image:Any, **kwargs):
-        
+        self.arr = None
+        self.img = None
+        self.name = None
+
         if isinstance(image, np.ndarray) :
             self._init_from_Arr(image)
             
@@ -53,28 +56,47 @@ class npImage():
             arr = np.load(corPath)
             self._init_from_Arr(arr)
 
-    def save(self, destPath:str, extension:str|list=None):
-        allowedExtension = [".npy", ".png", None]
+        self.name = corPath.stem
 
-        corPath = Path(destPath)
-        if extension:
-            if isinstance(extension, list):
-                for ext in extension:
-                    newPath = str(Path(destPath).with_suffix(ext))
-                    self.save(newPath, ext)
-                return
-            extension = extension.lower().strip()
-            if not extension in allowedExtension:
-                raise ValueError("unrecognised extension")
-            corPath = self._checkPath(corPath, extension)
-        else:
-            if not corPath.suffix in allowedExtension:
-                raise ValueError("unrecognised extension")
+    def save(self, destPath:str, extension:str|list=[], defaultExt:str=".png", **kwargs):
+        """
+        either the full file name, or a folder to which to 
+        save to with the same name as it was loaded in with
+        """
+        allowedExtension = [".npy", ".png"]
+        if not defaultExt in allowedExtension:
+            raise ValueError(f"default extension {defaultExt} is not supported")
         
-        if corPath.suffix == ".npy":
-            np.save(corPath, self.arr)
+        corPath = Path(destPath)
+
+        #get the correct extensions
+        if corPath.suffix:
+            extension.append(corPath.suffix)
+        if not extension:
+            extension = [defaultExt]
+
+        #get the path name if a folder is given
+        if corPath.is_dir():
+            if self.name:
+                corPath = corPath / self.name
+            else:
+                raise FileNotFoundError(f"no name is recorded for {self}, so cannot make a filepath to save with a folder path input {corPath}")
+
+        #save for each extension
+        for ext in extension:
+            cor_ext = extension.lower().strip()
+            if not cor_ext in allowedExtension:
+                raise ValueError(f"unrecognised extension {cor_ext}")
+            final_path = self._checkPath(corPath, cor_ext)
+            self._raw_save(final_path)
+        
+    def _raw_save(self, path:Path):
+        #saving, only .npy and .png supported at the moment
+
+        if path.suffix == ".npy":
+            np.save(path, self.arr)
         else:
-            self.img.save(corPath, format='PNG', optimize=True)
+            self.img.save(path, format='PNG', optimize=True)
 
     @staticmethod
     def _is_grayscale(img:PIL.Image.Image):
@@ -143,7 +165,7 @@ class npImage():
             w, h = self.img.size
             size = (int(w*size), int(h*size))
 
-        resized_img = self.img.resize(size, **kwargs)
+        resized_img = self.img.resize(size)
         resized_arr = np.array(resized_img).astype(np.float64)
         if save:
             self._init_from_Image(resized_img)
@@ -172,18 +194,14 @@ def saveImg(img:Any, path:str, **kwargs):
     tempImg.save(path, **kwargs)
     return
 
-
-
 def expand_folder_path(func):
     @wraps(func)
     def wrapper(paths, *args, **kwargs):
-
-
         if isinstance(paths, (str, Path)) and Path(paths).is_dir():
             folder = Path(paths)
             # Extract all file paths (ignoring subdirectories)
-            paths = [f for f in folder.iterdir() if f.is_file()]
-
+            paths = [f for f in folder.iterdir() if f.is_file() and f.name != "Thumbs.db"]
+            #windows adds hidden "Thumbs.db" to folders full of images
         return func(paths, *args, **kwargs)
     return wrapper
 
@@ -232,14 +250,12 @@ def weighted_average_images(paths: list[str], weights: list[float], blur_contras
     Loads image matrices from .npy files, applies weights, sums them,
     and normalizes by the number of images.
     """
-
     verbose = kwargs.get("verbose", True)
 
     if len(paths) != len(weights):
         raise ValueError(f"Lists of file paths and weights must be the same length\nlength of paths: {len(paths)}\n len of weights: {len(weights)}")
     elif len(paths) <= 0:
         return None
-    
 
     def applyWeight(image:npImage, r_weights:list[float], iter:int, **kwargs):
         return image.applyWeight(r_weights[iter], **kwargs)
@@ -253,25 +269,31 @@ def weighted_average_images(paths: list[str], weights: list[float], blur_contras
         funcs = [applyWeight]
         args = [{"r_weights":weights, "save":False}]
 
-
     init_val = np.zeros(1)
     def sumMatrix(n1:np.ndarray, n2:np.ndarray):
         return n1 + n2
 
     total_matrix = iterFolderFun(paths, funcs, args, reduction=sumMatrix,init_val=init_val,verbose=verbose)
-    # Normalize by number of images
     total_matrix /= sum(weights)
     return total_matrix
 
+@expand_folder_path
+def resize_and_save(paths:list[str], resize_factor:float, destFolder:str, extensions:list[str]):
+    funcs = [npImage.resize, npImage.save]
+    args = [{"size":resize_factor},{"destPath":destFolder, "extension":extensions}]
+    iterFolderFun(paths, funcs, args, verbose=True)
+    return
 
 def main():
     bmp = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images")
-    png = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\4000imgPNG")
-    npy = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\4000imgNPY")
     res = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\4000imgResults")
     
-    weights = np.ones(4000)
-    weighted_average_images(npy, weights)
+
+    dest = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\4000imgSmall"
+    destNPY = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\ImagesSmallNPY"
+
+    #resize_and_save(bmp, 0.2, dest, ".png")
+    resize_and_save(bmp, 0.2, destNPY, ".npy")
 
     return
 
