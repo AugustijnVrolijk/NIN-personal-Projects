@@ -12,7 +12,7 @@ from functools import wraps
 def normaliseNeuron(arr:np.ndarray, idx:int=None):
     #assume format is #trials , neurons
 
-    if idx:
+    if isinstance(idx, int):
         curArr = arr[:, idx]
     else:
         curArr = arr
@@ -307,7 +307,7 @@ def getRF(trimmedActivations, neuron, imgIDPaths):
     receptive_field.gamma_correction(2, save=True)
     return receptive_field
 
-def calcRFs(micePath):
+def calcRFs(micePath, inputCSV):
     signalToUse = "CaDec"
     saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType"
     baseIMGPath = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\ImagesSmallNPY")
@@ -329,14 +329,15 @@ def calcRFs(micePath):
         
     SNRdata = loadMat(resMatPath)
 
-    loadPath = os.path.join(saveFolder, "passedFilter.csv")
-    GoodNeurons = pd.read_csv(loadPath)
+    GoodNeurons = pd.read_csv(inputCSV)
 
     curMouse = GoodNeurons.loc[0, "Mouse"]
     signal, imgIDPaths = fetchMiceData(curMouse)
     resMat = SNRdata[curMouse].info.resMat  #shape like: (neurons, 12, 16, 2)
 
-    for _, row in GoodNeurons.iterrows():
+    totalLen = len(GoodNeurons)
+    for i, row in GoodNeurons.iterrows():
+        print(f"processing: neuron {i}/{totalLen}")
         if not curMouse == row['Mouse']:
             curMouse = row['Mouse']
             signal, imgIDPaths = fetchMiceData(curMouse)
@@ -412,4 +413,5 @@ if __name__ == "__main__":
         "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
         "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Lana_20241012_001_normcorr_SPSIG_Res.mat",
     }
-    calcRFs(micePath)
+    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\fromFctwente.csv"
+    calcRFs(micePath, inputCSV)
