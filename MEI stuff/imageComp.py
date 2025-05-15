@@ -76,6 +76,8 @@ class npImage():
         if not extension:
             extension = [defaultExt]
 
+        if isinstance(extension, str):
+            extension = [extension]
         #get the path name if a folder is given
         if corPath.is_dir():
             if self.name:
