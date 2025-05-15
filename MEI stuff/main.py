@@ -307,7 +307,7 @@ def getRF(trimmedActivations, neuron, imgIDPaths):
     receptive_field.gamma_correction(2, save=True)
     return receptive_field
 
-def calcRFs(micePath, inputCSV):
+def calcRFs(micePath, inputCSV, overwrite=False):
     signalToUse = "CaDec"
     saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType"
     baseIMGPath = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\ImagesSmallNPY")
@@ -338,26 +338,29 @@ def calcRFs(micePath, inputCSV):
     totalLen = len(GoodNeurons)
     for i, row in GoodNeurons.iterrows():
         print(f"processing: neuron {i}/{totalLen}")
+        #check if we need to load in a different mouse's data
         if not curMouse == row['Mouse']:
             curMouse = row['Mouse']
             signal, imgIDPaths = fetchMiceData(curMouse)
             resMat = SNRdata[curMouse].info.resMat  #shape like: (neurons, 12, 16, 2)
 
-        receptive_field = getRF(signal, row['mouseNeuron'], imgIDPaths)
-
-        FamiliarNO = row['respFamiliarNO']
-        FamiliarO = row['respFamiliarO']
-        NovelNO  = row['respNovelNO']
-        NovelO = row['respNovelO']
+        #check if this image has already been processed and saved
+        FamiliarNO, FamiliarO, NovelNO, NovelO = row[['respFamiliarNO', 'respFamiliarO', 'respNovelNO', 'respNovelO']]
 
         saveDir = getDirName(saveFolder, FamiliarNO, FamiliarO, NovelNO, NovelO)
-
         saveName = f"{getFileName(FamiliarNO, FamiliarO, NovelNO, NovelO)}_{curMouse}_{row['mouseNeuron']}"
-        savePath = os.path.join(saveDir, saveName)
-        receptive_field.save(savePath, extension=extension)
-
+        savePath = Path(os.path.join(saveDir, saveName))
         saveResName = f"{saveName}_true{extension}"
-        saveResPath = os.path.join(saveDir, saveResName)
+        saveResPath = Path(os.path.join(saveDir, saveResName))
+        if savePath.exists() and not overwrite:
+            if not saveResPath.exists():
+                saveResMatImg(resMat[row['mouseNeuron'],:,:,:],saveResPath,"white")
+            continue
+
+        #get receptive field
+        receptive_field = getRF(signal, row['mouseNeuron'], imgIDPaths)
+
+        receptive_field.save(savePath, extension=extension)
         saveResMatImg(resMat[row['mouseNeuron'],:,:,:],saveResPath,"white")
 
 def getDirName(base:Path | str, FamiliarNO:bool, FamiliarO:bool, NovelNO:bool, NovelO:bool) -> Path:

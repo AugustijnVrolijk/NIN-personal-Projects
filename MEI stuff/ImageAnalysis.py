@@ -9,6 +9,7 @@ from PIL import Image
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from imageComp import expand_folder_path
 
 def compute_saliency_map(img_gray):
     saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
@@ -93,17 +94,26 @@ def analyze_image(image_path, save=False, **kwargs):
         
     return saliency_map, entropy_map, edge_grid
 
+def checkName(filename:str|Path, name_skip:str|None):
+    if not isinstance(name_skip, str):
+        return False
+    
+    p = Path(filename)
+    name = p.name.lower()
+    return (name_skip.lower() in name)
 
-def analyze_image_folder(folder_path, **kwargs):
+@expand_folder_path
+def analyze_image_folder(folder_path, save_dir:str|Path, label:str="",name_skip:str=None,**kwargs):
     saliency_sum = None
     entropy_sum = None
     edge_grid_sum = None
     count = 0
 
-    for filename in tqdm(os.listdir(folder_path)):
+    for filename in tqdm(folder_path):
+        if checkName(filename, name_skip):
+            continue
         try:
-            path = os.path.join(folder_path, filename)
-            saliency_map, entropy_map, edge_grid = analyze_image(path, **kwargs)
+            saliency_map, entropy_map, edge_grid = analyze_image(filename, **kwargs)
 
             if saliency_sum is None:
                 saliency_sum = saliency_map
@@ -125,20 +135,28 @@ def analyze_image_folder(folder_path, **kwargs):
     edge_grid_avg = edge_grid_sum / count
 
     # Save results
-    os.makedirs("bias_results", exist_ok=True)
-    plt.imsave("bias_results/saliency_average.png", saliency_avg, cmap='hot')
-    plt.imsave("bias_results/entropy_average.png", entropy_avg, cmap='hot')
+    os.makedirs(save_dir, exist_ok=True)
+    plt.imsave(os.path.join(save_dir,f"{label}saliency_average.png"), saliency_avg, cmap='hot')
+    plt.imsave(os.path.join(save_dir,f"{label}entropy_average.png"), entropy_avg, cmap='hot')
+    plt.imsave(os.path.join(save_dir,f"{label}edge_grid_average.png"), edge_grid_avg, cmap='hot')
 
+    """
     plt.figure()
     plt.title("Mean Edge Grid (3x3)")
     plt.imshow(edge_grid_avg, cmap='hot')
-    plt.colorbar()
     plt.savefig("bias_results/edge_grid_average.png")
-
-    print("Analysis complete. Results saved in 'bias_results/'.")
+    """
+    print(f"Analysis complete. Results saved in {save_dir}'.")
 
 # Example usage
 if __name__ == "__main__":
     folder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images"
-    #analyze_image_folder(folder, resize=False)
-    analyze_image(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images\0460.bmp", resize=False, save=True)
+    both = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\both"
+    nOcc = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\notOccluded"
+    occ = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\occluded"
+    dest = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\analysis"
+    analyze_image_folder(both, dest, label="both_", name_skip="true", resize=False)
+    analyze_image_folder(nOcc, dest, label="notOccluded_", name_skip="true", resize=False)
+    analyze_image_folder(occ, dest, label="occluded_", name_skip="true", resize=False)
+
+    #analyze_image(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images\0460.bmp", resize=False, save=True)
