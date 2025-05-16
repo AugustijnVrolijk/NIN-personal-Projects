@@ -200,7 +200,7 @@ def collateDataSheet(micePath):
     savePath = os.path.join(saveFolder, "info.csv")
     finalData.to_csv(savePath, index=False)
     
-def filterDataSheet(enforce:bool=True, SNRThresh:float=4, RSQThresh:float=0.33, nSpikesThresh:int=50, RFCheck:bool=True, ResponseThresh:float=0.5):
+def filterDataSheet(enforce:bool=True, SNRThresh:float=4, RSQThresh:float=0.33, nSpikesThresh:int=50, RFCheck:bool=True, ResponseThresh:float=0.5, saveName:str="passedFilter.csv", ignoreRSQSNR:bool=False):
     saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType"
     loadPath = os.path.join(saveFolder, "info.csv")
     rawData = pd.read_csv(loadPath)
@@ -218,7 +218,7 @@ def filterDataSheet(enforce:bool=True, SNRThresh:float=4, RSQThresh:float=0.33, 
 
     for i, row in rawData.iterrows():
         #check SNR and RSQ
-        if not checkRSQSNR(row['SNRscore'], row['RSQscore'], enforce, SNRThresh, RSQThresh):
+        if (not checkRSQSNR(row['SNRscore'], row['RSQscore'], enforce, SNRThresh, RSQThresh)) and (not ignoreRSQSNR):
             continue 
         #Check RF
         if RFCheck and (row['RFscore'] == 0):
@@ -238,7 +238,7 @@ def filterDataSheet(enforce:bool=True, SNRThresh:float=4, RSQThresh:float=0.33, 
         FinalData.loc[curLen] = [i, row['Mouse'], row['Neuron'], respFamiliarNO, respFamiliarO, respNovelNO, respNovelO]
         curLen += 1
 
-    savePath = os.path.join(saveFolder, "passedFilter.csv")
+    savePath = os.path.join(saveFolder, saveName)
     FinalData.to_csv(savePath, index=False)
 
 def AjaxRFs():
@@ -417,4 +417,6 @@ if __name__ == "__main__":
         "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Lana_20241012_001_normcorr_SPSIG_Res.mat",
     }
     inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\fromFctwente.csv"
-    calcRFs(micePath, inputCSV)
+    
+    #calcRFs(micePath, inputCSV)
+    filterDataSheet(False, -1, -1, 35, True, 0.5, "lessStringentWithMinSpikes.csv", ignoreRSQSNR=True)

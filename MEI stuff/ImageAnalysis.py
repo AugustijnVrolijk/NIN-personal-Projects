@@ -9,15 +9,28 @@ from PIL import Image
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from imageComp import expand_folder_path
+from imageComp import expand_folder_path, npImage
 
 def compute_saliency_map(img_gray):
     saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
     (success, saliency_map) = saliency.computeSaliency(img_gray)
     return saliency_map.astype(np.float32)
 
-def compute_entropy_map(img_gray, patch_size=32):
-    H, W = img_gray.shape
+def smallest_common_divisor_above_threshold(a, b, t):
+    # Find all common divisors
+    common_divisors = [i for i in range(1, min(a, b) + 1) if a % i == 0 and b % i == 0]
+    
+    # Filter those greater than the threshold
+    valid_divisors = [d for d in common_divisors if d > t]
+    
+    # Return the smallest one above the threshold, or None if none exists
+    return min(valid_divisors) if valid_divisors else None
+
+def compute_entropy_map(img_gray, patch_size=16):
+    height, width = img_gray.shape
+    patch_size = smallest_common_divisor_above_threshold(height, width, patch_size)
+    if patch_size is None or patch_size > 50:
+        raise ValueError("bad patch_size")
     entropy_map = np.zeros_like(img_gray, dtype=np.float32)
 
     windows = view_as_windows(img_gray, (patch_size, patch_size), step=patch_size)
@@ -138,14 +151,14 @@ def analyze_image_folder(folder_path, save_dir:str|Path, label:str="",name_skip:
     os.makedirs(save_dir, exist_ok=True)
     plt.imsave(os.path.join(save_dir,f"{label}saliency_average.png"), saliency_avg, cmap='hot')
     plt.imsave(os.path.join(save_dir,f"{label}entropy_average.png"), entropy_avg, cmap='hot')
+    """
     plt.imsave(os.path.join(save_dir,f"{label}edge_grid_average.png"), edge_grid_avg, cmap='hot')
-
     """
     plt.figure()
     plt.title("Mean Edge Grid (3x3)")
     plt.imshow(edge_grid_avg, cmap='hot')
-    plt.savefig("bias_results/edge_grid_average.png")
-    """
+    plt.savefig(os.path.join(save_dir,f"{label}edge_grid_average.png"))
+    
     print(f"Analysis complete. Results saved in {save_dir}'.")
 
 # Example usage
