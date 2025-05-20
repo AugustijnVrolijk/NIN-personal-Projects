@@ -6,8 +6,10 @@ import pandas as pd
 from PIL import Image
 from pathlib import Path
 from matLoader import loadMat
-from imageComp import weighted_average_images, npImage
+from imageComp import weighted_average_images, npImage, save_as_npy
 from functools import wraps
+from ImageAnalysis import analyze_image_folder
+
 
 def normaliseNeuron(arr:np.ndarray, idx:int=None):
     #assume format is #trials , neurons
@@ -297,7 +299,6 @@ def AjaxRFs():
     savePath = os.path.join(outputDir, "info.csv")
     finalData.to_csv(savePath, index=False)    
 
-
 def getRF(trimmedActivations, neuron, imgIDPaths):
     normalised = normaliseNeuron(trimmedActivations, neuron)
     receptive_field = npImage(weighted_average_images(imgIDPaths, normalised))
@@ -307,10 +308,9 @@ def getRF(trimmedActivations, neuron, imgIDPaths):
     receptive_field.gamma_correction(2, save=True)
     return receptive_field
 
-def calcRFs(micePath, inputCSV, overwrite=False):
+def calcRFs(micePath, inputCSV, saveFolder, baseIMGPath, label:str="",overwrite=False):
     signalToUse = "CaDec"
-    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType"
-    baseIMGPath = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\ImagesSmallNPY")
+    
     resMatPath = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFByMiceData.mat"
     extension = ".png"
 
@@ -356,7 +356,10 @@ def calcRFs(micePath, inputCSV, overwrite=False):
             if not saveResPath.exists():
                 saveResMatImg(resMat[row['mouseNeuron'],:,:,:],saveResPath,"white")
             continue
-
+        
+        if label:
+            saveName = f"{saveName}{label}"
+            savePath = Path(os.path.join(saveDir, saveName))
         #get receptive field
         receptive_field = getRF(signal, row['mouseNeuron'], imgIDPaths)
 
@@ -416,7 +419,27 @@ if __name__ == "__main__":
         "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
         "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Lana_20241012_001_normcorr_SPSIG_Res.mat",
     }
-    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\fromFctwente.csv"
-    
-    #calcRFs(micePath, inputCSV)
-    filterDataSheet(False, -1, -1, 35, True, 0.5, "lessStringentWithMinSpikes.csv", ignoreRSQSNR=True)
+    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\lessStringentWithMinSpikes.csv"
+    inputCSV_all = r"c:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\lessStringent.csv"
+    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull"
+
+    muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images")
+    images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\muckli4000npy")
+
+    save_as_npy(muckli4000, images, ".npy")
+
+    calcRFs(micePath, inputCSV, saveFolder, baseIMGPath=images)
+    calcRFs(micePath, inputCSV_all, saveFolder, baseIMGPath=images, label="_noMinSpike")
+
+
+    both = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\both"
+    nOcc = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\notOccluded"
+    occ = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\occluded"
+    dest = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\analysis"
+    analyze_image_folder(both, dest, label="both_", name_skip="true", patch_size=30, resize=False)
+    analyze_image_folder(nOcc, dest, label="notOccluded_", name_skip="true", patch_size=30, resize=False)
+    analyze_image_folder(occ, dest, label="occluded_", name_skip="true", patch_size=30, resize=False)
+    #analyze_image_folder(folder, dest2, label="occluded_", patch_size=30,resize=False)
+
+
+    #filterDataSheet(False, -1, -1, 35, True, 0.5, "lessStringentWithMinSpikes.csv", ignoreRSQSNR=True)

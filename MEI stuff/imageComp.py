@@ -286,6 +286,13 @@ def resize_and_save(paths:list[str], resize_factor:float, destFolder:str, extens
     iterFolderFun(paths, funcs, args, verbose=True)
     return
 
+@expand_folder_path
+def save_as_npy(paths:list[str], destFolder:str, extensions:list[str]):
+    funcs = [npImage.save]
+    args = [{"destPath":destFolder, "extension":extensions}]
+    iterFolderFun(paths, funcs, args, verbose=True)
+    return
+
 def main():
     bmp = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images")
     res = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\4000imgResults")
@@ -296,7 +303,7 @@ def main():
 
     #resize_and_save(bmp, 0.2, dest, ".png")
     resize_and_save(bmp, 0.2, destNPY, ".npy")
-
+    save_as_npy(bmp, )
     return
 
 if __name__ == "__main__":

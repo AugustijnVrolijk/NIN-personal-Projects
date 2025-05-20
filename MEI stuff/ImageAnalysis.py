@@ -168,8 +168,11 @@ if __name__ == "__main__":
     nOcc = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\notOccluded"
     occ = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\occluded"
     dest = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseType\analysis"
-    analyze_image_folder(both, dest, label="both_", name_skip="true", resize=False)
-    analyze_image_folder(nOcc, dest, label="notOccluded_", name_skip="true", resize=False)
-    analyze_image_folder(occ, dest, label="occluded_", name_skip="true", resize=False)
+    dest2 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\toShare\bias_results"
+    #analyze_image_folder(both, dest, label="both_", name_skip="true", resize=False)
+    #analyze_image_folder(nOcc, dest, label="notOccluded_", name_skip="true", resize=False)
+    #analyze_image_folder(occ, dest, label="occluded_", name_skip="true", resize=False)
+    #analyze_image_folder(folder, dest2, label="occluded_", patch_size=30,resize=False)
 
-    #analyze_image(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images\0460.bmp", resize=False, save=True)
+    analyze_image(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images\0460.bmp",patch_size=30, resize=False, save=True)
+    analyze_image(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images\0007.bmp",patch_size=30 ,resize=False, save=True)
