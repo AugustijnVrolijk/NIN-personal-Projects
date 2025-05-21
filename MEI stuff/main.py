@@ -6,7 +6,7 @@ import pandas as pd
 from PIL import Image
 from pathlib import Path
 from matLoader import loadMat
-from imageComp import weighted_average_images, npImage, save_as_npy
+from imageComp import opti_weighted_average_images, npImage, save_as_npy
 from functools import wraps
 from ImageAnalysis import analyze_image_folder
 
@@ -301,7 +301,7 @@ def AjaxRFs():
 
 def getRF(trimmedActivations, neuron, imgIDPaths):
     normalised = normaliseNeuron(trimmedActivations, neuron)
-    receptive_field = npImage(weighted_average_images(imgIDPaths, normalised))
+    receptive_field = npImage(opti_weighted_average_images(imgIDPaths, normalised))
 
     #post processing to make the image more visible
     receptive_field.blur(3, save=True)
@@ -333,7 +333,11 @@ def calcRFs(micePath, inputCSV, saveFolder, baseIMGPath, label:str="",overwrite=
 
     curMouse = GoodNeurons.loc[0, "Mouse"]
     signal, imgIDPaths = fetchMiceData(curMouse)
-    resMat = SNRdata[curMouse].info.resMat  #shape like: (neurons, 12, 16, 2)
+    try:
+        trueRF = True
+        resMat = SNRdata[curMouse].info.resMat  #shape like: (neurons, 12, 16, 2)
+    except KeyError:
+        trueRF = False
 
     totalLen = len(GoodNeurons)
     for i, row in GoodNeurons.iterrows():
@@ -342,7 +346,11 @@ def calcRFs(micePath, inputCSV, saveFolder, baseIMGPath, label:str="",overwrite=
         if not curMouse == row['Mouse']:
             curMouse = row['Mouse']
             signal, imgIDPaths = fetchMiceData(curMouse)
-            resMat = SNRdata[curMouse].info.resMat  #shape like: (neurons, 12, 16, 2)
+            try:
+                trueRF = True
+                resMat = SNRdata[curMouse].info.resMat  #shape like: (neurons, 12, 16, 2)
+            except KeyError:
+                trueRF = False
 
         #check if this image has already been processed and saved
         FamiliarNO, FamiliarO, NovelNO, NovelO = row[['respFamiliarNO', 'respFamiliarO', 'respNovelNO', 'respNovelO']]
@@ -350,22 +358,73 @@ def calcRFs(micePath, inputCSV, saveFolder, baseIMGPath, label:str="",overwrite=
         saveDir = getDirName(saveFolder, FamiliarNO, FamiliarO, NovelNO, NovelO)
         saveName = f"{getFileName(FamiliarNO, FamiliarO, NovelNO, NovelO)}_{curMouse}_{row['mouseNeuron']}"
         savePath = Path(os.path.join(saveDir, saveName))
+        checkSaveName = f"{saveName}{extension}"
+        checkSavePath = Path(os.path.join(saveDir, checkSaveName))
         saveResName = f"{saveName}_true{extension}"
         saveResPath = Path(os.path.join(saveDir, saveResName))
-        if savePath.exists() and not overwrite:
-            if not saveResPath.exists():
-                saveResMatImg(resMat[row['mouseNeuron'],:,:,:],saveResPath,"white")
+
+        if checkSavePath.exists() and not overwrite:
             continue
-        
-        if label:
-            saveName = f"{saveName}{label}"
-            savePath = Path(os.path.join(saveDir, saveName))
+       
+        saveName = f"{getFileName(FamiliarNO, FamiliarO, NovelNO, NovelO)}_{curMouse}_{row['mouseNeuron']}{label}"
         #get receptive field
         receptive_field = getRF(signal, row['mouseNeuron'], imgIDPaths)
 
         receptive_field.save(savePath, extension=extension)
-        saveResMatImg(resMat[row['mouseNeuron'],:,:,:],saveResPath,"white")
+        if trueRF:
+            saveResMatImg(resMat[row['mouseNeuron'],:,:,:],saveResPath,"white")
 
+def cleanRFs(inputCSV, inputCSV_all, saveFolder, label:str=""):
+    extension = ".png"
+    GoodNeurons = pd.read_csv(inputCSV)
+    GoodNeurons_all = pd.read_csv(inputCSV_all)
+
+    curMouse = GoodNeurons.loc[0, "Mouse"]
+
+    totalLen = len(GoodNeurons_all)
+    row_i = 0
+    for i, row_all in GoodNeurons_all.iterrows():
+        print(f"processing: neuron {i}/{totalLen}")
+        #check if we need to load in a different mouse's data
+        if not curMouse == row_all['Mouse']:
+            curMouse = row_all['Mouse']
+
+        isDuplicate = False
+
+        row = GoodNeurons.iloc[row_i]
+        if (row['Mouse'] == row_all['Mouse']) and (row['mouseNeuron'] == row_all['mouseNeuron']):
+            isDuplicate = True
+            t1, t2, t3, t4  = row_all[['respFamiliarNO', 'respFamiliarO', 'respNovelNO', 'respNovelO']]
+            l1, l2, l3, l4 = row[['respFamiliarNO', 'respFamiliarO', 'respNovelNO', 'respNovelO']]
+            assert (t1 == l1) and (t2 == l2) and (t3 == l3) and (t4 == l4)
+            row_i += 1
+       
+        FamiliarNO, FamiliarO, NovelNO, NovelO = row_all[['respFamiliarNO', 'respFamiliarO', 'respNovelNO', 'respNovelO']]
+        saveDir = getDirName(saveFolder, FamiliarNO, FamiliarO, NovelNO, NovelO)
+        saveNameCore = f"{getFileName(FamiliarNO, FamiliarO, NovelNO, NovelO)}_{curMouse}_{row_all['mouseNeuron']}"
+
+        true = f"{saveNameCore}{extension}"
+        truePath = Path(os.path.join(saveDir, true))
+        trueResName = f"{saveNameCore}_true{extension}"
+        trueResPath = Path(os.path.join(saveDir, trueResName))
+
+        duplicate = f"{saveNameCore}{label}{extension}"
+        duplicatePath = Path(os.path.join(saveDir, duplicate))
+        duplicateResName = f"{saveNameCore}{label}_true{extension}"
+        duplicateResPath = Path(os.path.join(saveDir, duplicateResName))
+
+        if isDuplicate:
+            
+            duplicatePath.unlink(True)
+            duplicateResPath.unlink(True) 
+        else:
+            print(truePath)
+            truePath.unlink(True)
+            trueResPath.unlink(True)
+
+
+
+       
 def getDirName(base:Path | str, FamiliarNO:bool, FamiliarO:bool, NovelNO:bool, NovelO:bool) -> Path:
     NotOccluded = False
     occluded = False
@@ -409,6 +468,20 @@ def getFileName(FamiliarNO:bool, FamiliarO:bool, NovelNO:bool, NovelO:bool):
 
     return nameType
 
+def perform_analysis(dest, name_skip, label):
+    both = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\both"
+    nOcc = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\notOccluded"
+    occ = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\occluded"
+    print("analysing both")
+    labelB = f"_both{label}"
+    analyze_image_folder(both, dest, label=labelB, name_skip=["true", "noMinSpike"], patch_size=30, resize=False)
+    print("analysing notOccluded")
+    labelNO = f"_notOccluded{label}"
+    analyze_image_folder(nOcc, dest, label=labelNO, name_skip=["true", "noMinSpike"], patch_size=30, resize=False)
+    print("analysing occluded")
+    labelO = f"_occluded{label}"
+    analyze_image_folder(occ, dest, label=labelO, name_skip=["true", "noMinSpike"], patch_size=30, resize=False)
+
 if __name__ == "__main__":
     micePath = { #In alphabetical order for the 3312 neurons
         "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
@@ -426,19 +499,38 @@ if __name__ == "__main__":
     muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images")
     images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\muckli4000npy")
 
-    save_as_npy(muckli4000, images, ".npy")
+    #save_as_npy(muckli4000, images, ".npy")
 
-    calcRFs(micePath, inputCSV, saveFolder, baseIMGPath=images)
-    calcRFs(micePath, inputCSV_all, saveFolder, baseIMGPath=images, label="_noMinSpike")
+    #calcRFs(micePath, inputCSV, saveFolder, baseIMGPath=images)
+    #calcRFs(micePath, inputCSV_all, saveFolder, baseIMGPath=images, label="_noMinSpike")
+    cleanRFs(inputCSV, inputCSV_all, saveFolder, label="_noMinSpike")
 
-
-    both = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\both"
-    nOcc = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\notOccluded"
-    occ = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\occluded"
+    
     dest = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\analysis"
-    analyze_image_folder(both, dest, label="both_", name_skip="true", patch_size=30, resize=False)
-    analyze_image_folder(nOcc, dest, label="notOccluded_", name_skip="true", patch_size=30, resize=False)
-    analyze_image_folder(occ, dest, label="occluded_", name_skip="true", patch_size=30, resize=False)
+
+    dest1 = os.path.join(dest, r"novel")
+    name_skip1 = ["true", "noMinSpike", "familiar"]
+    name_skip11 = ["true", "familiar"]
+    label1 = ""
+    
+    dest2 = os.path.join(dest, r"familiar")
+    name_skip2 = ["true", "noMinSpike", "novel"]
+    name_skip21 = ["true", "novel"]
+    label2 = "_all"
+
+    name_skip3 = ["true", "noMinSpike"]
+    name_skip31 = ["true"]
+    perform_analysis(dest1, name_skip1, label1)
+    perform_analysis(dest1, name_skip11, label2)
+
+    perform_analysis(dest2, name_skip2, label1)
+    perform_analysis(dest2, name_skip21, label2)
+
+    perform_analysis(dest, name_skip3, label1)
+    perform_analysis(dest, name_skip31, label2)
+
+
+    
     #analyze_image_folder(folder, dest2, label="occluded_", patch_size=30,resize=False)
 
 

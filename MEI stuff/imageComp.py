@@ -279,6 +279,23 @@ def weighted_average_images(paths: list[str], weights: list[float], blur_contras
     total_matrix /= sum(weights)
     return total_matrix
 
+def opti_weighted_average_images(paths:list[str], weights:list[float]) -> np.ndarray:
+    total_weight = 0
+    
+    total_matrix = np.load(paths[0]) * weights[0]
+
+    for i, val in tqdm(enumerate(weights[1:])):
+        if (val < 0.005) and (val > -0.005):
+            continue
+        total_matrix += (np.load(paths[i+1]) * val)
+        total_weight += val
+
+
+    total_matrix /= total_weight
+    return total_matrix
+    
+    
+
 @expand_folder_path
 def resize_and_save(paths:list[str], resize_factor:float, destFolder:str, extensions:list[str]):
     funcs = [npImage.resize, npImage.save]

@@ -108,6 +108,12 @@ def analyze_image(image_path, save=False, **kwargs):
     return saliency_map, entropy_map, edge_grid
 
 def checkName(filename:str|Path, name_skip:str|None):
+
+    if isinstance(name_skip, list):
+        #val = any(checkName(filename, name) for name in name_skip)
+        #print(f"{val=}, {name_skip=}, {filename=}")
+        return any(checkName(filename, name) for name in name_skip)
+
     if not isinstance(name_skip, str):
         return False
     
@@ -149,15 +155,15 @@ def analyze_image_folder(folder_path, save_dir:str|Path, label:str="",name_skip:
 
     # Save results
     os.makedirs(save_dir, exist_ok=True)
-    plt.imsave(os.path.join(save_dir,f"{label}saliency_average.png"), saliency_avg, cmap='hot')
-    plt.imsave(os.path.join(save_dir,f"{label}entropy_average.png"), entropy_avg, cmap='hot')
+    plt.imsave(os.path.join(save_dir,f"saliency_average{label}.png"), saliency_avg, cmap='hot')
+    plt.imsave(os.path.join(save_dir,f"entropy_average{label}.png"), entropy_avg, cmap='hot')
     """
     plt.imsave(os.path.join(save_dir,f"{label}edge_grid_average.png"), edge_grid_avg, cmap='hot')
     """
     plt.figure()
     plt.title("Mean Edge Grid (3x3)")
     plt.imshow(edge_grid_avg, cmap='hot')
-    plt.savefig(os.path.join(save_dir,f"{label}edge_grid_average.png"))
+    plt.savefig(os.path.join(save_dir,f"edge_grid_average{label}.png"))
     
     print(f"Analysis complete. Results saved in {save_dir}'.")
 
