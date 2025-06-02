@@ -2,13 +2,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import pandas as pd
+from concurrent.futures import ProcessPoolExecutor
+import cv2
 
+from skimage import measure
+from tqdm import tqdm
 from PIL import Image
 from pathlib import Path
 from matLoader import loadMat
-from imageComp import opti_weighted_average_images, npImage, save_as_npy
+from imageComp import opti_weighted_average_images, npImage, expand_folder_path
 from functools import wraps
-from ImageAnalysis import analyze_image_folder
+from ImageAnalysis import analyze_image_folder, checkName
 
 
 def normaliseNeuron(arr:np.ndarray, idx:int=None):
@@ -414,17 +418,12 @@ def cleanRFs(inputCSV, inputCSV_all, saveFolder, label:str=""):
         duplicateResPath = Path(os.path.join(saveDir, duplicateResName))
 
         if isDuplicate:
-            
             duplicatePath.unlink(True)
             duplicateResPath.unlink(True) 
         else:
-            print(truePath)
             truePath.unlink(True)
             trueResPath.unlink(True)
 
-
-
-       
 def getDirName(base:Path | str, FamiliarNO:bool, FamiliarO:bool, NovelNO:bool, NovelO:bool) -> Path:
     NotOccluded = False
     occluded = False
@@ -474,13 +473,73 @@ def perform_analysis(dest, name_skip, label):
     occ = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\occluded"
     print("analysing both")
     labelB = f"_both{label}"
-    analyze_image_folder(both, dest, label=labelB, name_skip=["true", "noMinSpike"], patch_size=30, resize=False)
+    analyze_image_folder(both, dest, label=labelB, name_skip=name_skip, patch_size=30, resize=False)
     print("analysing notOccluded")
     labelNO = f"_notOccluded{label}"
-    analyze_image_folder(nOcc, dest, label=labelNO, name_skip=["true", "noMinSpike"], patch_size=30, resize=False)
+    analyze_image_folder(nOcc, dest, label=labelNO, name_skip=name_skip, patch_size=30, resize=False)
     print("analysing occluded")
     labelO = f"_occluded{label}"
-    analyze_image_folder(occ, dest, label=labelO, name_skip=["true", "noMinSpike"], patch_size=30, resize=False)
+    analyze_image_folder(occ, dest, label=labelO, name_skip=name_skip, patch_size=30, resize=False)
+
+def blur_image(origin:str, dest:str, weight:float=0.2, sigma:float=10) -> npImage:
+    img = npImage(origin)
+
+    img.blur(sigma=sigma)
+    img.tv_smoothing(weight=weight)
+    img.save(dest)
+    return
+
+def blur_task(args):
+    return blur_image(*args)
+
+@expand_folder_path
+def blur_folder(paths:str, skip:list, dest, weight:float=0.2, sigma:float=15, label:str="_blurred"):
+    tasks = []
+    for temp_path in paths:
+        if checkName(temp_path, skip):
+            continue
+        origin = Path(temp_path)
+        temp_dest = Path(os.path.join(dest, f"{origin.stem}{label}{origin.suffix}"))
+        tasks.append((origin, temp_dest, weight, sigma))
+
+
+    with ProcessPoolExecutor() as executor:
+        list(tqdm(executor.map(blur_task, tasks)))
+
+    return
+
+def main_blur():
+    n_s1 = ["true", "both", "novel", "noMinSpike"]
+    n_s2 = ["true", "both", "familiar", "noMinSpike"]
+
+    p1 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\notOccluded"
+    dest1 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFanalysis\notOccluded\familiar"
+    dest2 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFanalysis\notOccluded\novel"
+    blur_folder(p1, n_s1, dest1)
+    blur_folder(p1, n_s2, dest2)
+
+    p2 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\occluded"
+    dest3 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFanalysis\occluded\familiar"
+    dest4 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFanalysis\occluded\novel"
+    blur_folder(p2, n_s1, dest3)
+    blur_folder(p2, n_s2, dest4)
+
+def measureBlobs():
+    # Load smoothed image
+    path = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\notOccluded\familiar\familiar_Ajax_306_blurred.png"
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+
+    # Threshold
+    binary = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 71, 1)
+
+    # Label blobs
+    temp = npImage(binary)
+    temp.save(r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\notOccluded\familiar\familiar_Ajax_306_tester.png")
+    labels = measure.label(binary)
+    props = measure.regionprops(labels, intensity_image=img)
+    for i, prop in enumerate(props):
+        print(f"Blob {i}: Area={prop.area}, Mean Intensity={prop.mean_intensity:.2f}")
+    return
 
 if __name__ == "__main__":
     micePath = { #In alphabetical order for the 3312 neurons
@@ -499,15 +558,18 @@ if __name__ == "__main__":
     muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images")
     images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\muckli4000npy")
 
-    #save_as_npy(muckli4000, images, ".npy")
-
-    #calcRFs(micePath, inputCSV, saveFolder, baseIMGPath=images)
-    #calcRFs(micePath, inputCSV_all, saveFolder, baseIMGPath=images, label="_noMinSpike")
-    cleanRFs(inputCSV, inputCSV_all, saveFolder, label="_noMinSpike")
+    measureBlobs()
 
     
-    dest = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\analysis"
 
+def calcCleanRFs():
+    calcRFs(micePath, inputCSV, saveFolder,baseIMGPath=images, overwrite=True)
+    calcRFs(micePath, inputCSV_all, saveFolder, baseIMGPath=images, label="_noMinSpike")
+    cleanRFs(inputCSV, inputCSV_all, saveFolder, label="_noMinSpike")
+    filterDataSheet(False, -1, -1, 35, True, 0.5, "lessStringentWithMinSpikes.csv", ignoreRSQSNR=True)
+
+def analysis_bulk():
+    dest = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\analysis"
     dest1 = os.path.join(dest, r"novel")
     name_skip1 = ["true", "noMinSpike", "familiar"]
     name_skip11 = ["true", "familiar"]
@@ -528,10 +590,3 @@ if __name__ == "__main__":
 
     perform_analysis(dest, name_skip3, label1)
     perform_analysis(dest, name_skip31, label2)
-
-
-    
-    #analyze_image_folder(folder, dest2, label="occluded_", patch_size=30,resize=False)
-
-
-    #filterDataSheet(False, -1, -1, 35, True, 0.5, "lessStringentWithMinSpikes.csv", ignoreRSQSNR=True)

@@ -9,6 +9,8 @@ from PIL import Image
 from functools import wraps
 from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
+from skimage.restoration import denoise_tv_chambolle
+
 
 class npImage():
     def __init__(self, image:Any, **kwargs):
@@ -160,6 +162,14 @@ class npImage():
             
         return blurred
     
+    def tv_smoothing(self, weight, save=True):
+        blurred = denoise_tv_chambolle(self.arr, weight)
+        
+        if save:
+            self._init_from_Arr(blurred)
+        
+        return blurred
+    
     def resize(self, size:float|tuple, save=True, **kwargs):
         
         if isinstance(size, tuple):
@@ -294,8 +304,6 @@ def opti_weighted_average_images(paths:list[str], weights:list[float]) -> np.nda
     total_matrix /= total_weight
     return total_matrix
     
-    
-
 @expand_folder_path
 def resize_and_save(paths:list[str], resize_factor:float, destFolder:str, extensions:list[str]):
     funcs = [npImage.resize, npImage.save]
