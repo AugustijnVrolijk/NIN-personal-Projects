@@ -188,9 +188,6 @@ def cleanRFs(inputCSV, inputCSV_all, saveFolder, label:str=""):
             truePath.unlink(True)
             trueResPath.unlink(True)
 
-def buildActivationMatrix():
-    return
-
 def getDirName(base:Path | str, FamiliarNO:bool, FamiliarO:bool, NovelNO:bool, NovelO:bool) -> Path:
     NotOccluded = False
     occluded = False
@@ -279,15 +276,15 @@ def main_blur():
     n_s1 = ["true", "both", "novel", "noMinSpike"]
     n_s2 = ["true", "both", "familiar", "noMinSpike"]
 
-    p1 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\notOccluded"
-    dest1 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFanalysis\notOccluded\familiar"
-    dest2 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFanalysis\notOccluded\novel"
+    p1 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\notOccluded"
+    dest1 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\notOccluded\familiar"
+    dest2 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\notOccluded\novel"
     blur_folder(p1, n_s1, dest1)
     blur_folder(p1, n_s2, dest2)
 
-    p2 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\occluded"
-    dest3 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFanalysis\occluded\familiar"
-    dest4 = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFanalysis\occluded\novel"
+    p2 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\occluded"
+    dest3 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\occluded\familiar"
+    dest4 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\occluded\novel"
     blur_folder(p2, n_s1, dest3)
     blur_folder(p2, n_s2, dest4)
 
@@ -310,20 +307,20 @@ def measureBlobs():
 
 if __name__ == "__main__":
     micePath = { #In alphabetical order for the 3312 neurons
-        "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
-        "Anton":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Anton_20241123_1502_normcorr_SPSIG_Res.mat",
-        "Bell":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Bell_20241122_1150_normcorr_SPSIG_Res.mat",
-        "Fctwente":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Fctwente_20241011_001_normcorr_SPSIG_Res.mat",
-        "Feyenoord":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Feyenoord_20241011_001_normcorr_SPSIG_Res.mat",
-        "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
-        "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Lana_20241012_001_normcorr_SPSIG_Res.mat",
+        "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
+        "Anton":r"C:\Users\augus\NIN_Stuff\data\koenData\Anton_20241123_1502_normcorr_SPSIG_Res.mat",
+        "Bell":r"C:\Users\augus\NIN_Stuff\data\koenData\Bell_20241122_1150_normcorr_SPSIG_Res.mat",
+        "Fctwente":r"C:\Users\augus\NIN_Stuff\data\koenData\Fctwente_20241011_001_normcorr_SPSIG_Res.mat",
+        "Feyenoord":r"C:\Users\augus\NIN_Stuff\data\koenData\Feyenoord_20241011_001_normcorr_SPSIG_Res.mat",
+        "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
+        "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Lana_20241012_001_normcorr_SPSIG_Res.mat",
     }
-    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\lessStringentWithMinSpikes.csv"
-    inputCSV_all = r"c:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\lessStringent.csv"
-    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull"
+    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringentWithMinSpikes.csv"
+    inputCSV_all = r"c:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringent.csv"
+    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull"
 
-    muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\Muckli4000Images")
-    images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\muckli4000npy")
+    muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Muckli4000Images")
+    images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\muckli4000npy")
 
     measureBlobs()
 
@@ -333,10 +330,9 @@ def calcCleanRFs():
     calcRFs(micePath, inputCSV, saveFolder,baseIMGPath=images, overwrite=True)
     calcRFs(micePath, inputCSV_all, saveFolder, baseIMGPath=images, label="_noMinSpike")
     cleanRFs(inputCSV, inputCSV_all, saveFolder, label="_noMinSpike")
-    filterDataSheet(False, -1, -1, 35, True, 0.5, "lessStringentWithMinSpikes.csv", ignoreRSQSNR=True)
 
 def analysis_bulk():
-    dest = r"C:\Users\augus\NIN_Stuff\data\koenData\Koen_to_Augustijn\RFbyResponseTypeFull\analysis"
+    dest = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\analysis"
     dest1 = os.path.join(dest, r"novel")
     name_skip1 = ["true", "noMinSpike", "familiar"]
     name_skip11 = ["true", "familiar"]
