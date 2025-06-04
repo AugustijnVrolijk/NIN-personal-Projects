@@ -291,11 +291,11 @@ def weighted_average_images(paths: list[str], weights: list[float], blur_contras
 
 def opti_weighted_average_images(paths:list[str], weights:list[float]) -> np.ndarray:
     total_weight = 0
-    
+   
     total_matrix = np.load(paths[0]) * weights[0]
-
+  
     for i, val in tqdm(enumerate(weights[1:])):
-        if (val < 0.005) and (val > -0.005):
+        if (val < 0.001) and (val > -0.001):
             continue
         total_matrix += (np.load(paths[i+1]) * val)
         total_weight += val

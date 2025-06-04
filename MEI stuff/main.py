@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import Process
 import cv2
 
 from skimage import measure
@@ -11,9 +12,8 @@ from PIL import Image
 from pathlib import Path
 from matLoader import loadMat
 from imageComp import opti_weighted_average_images, npImage, expand_folder_path
-from functools import wraps
 from ImageAnalysis import analyze_image_folder, checkName
-
+from dataprep import getNeuronActivations
 
 def normaliseNeuron(arr:np.ndarray, idx:int=None):
     #assume format is #trials , neurons
@@ -65,7 +65,6 @@ def saveResMatImg(arr:np.ndarray, savePath:str, bufferColour:str="black"):
     mergedImg.resize(15, resample=Image.NEAREST)
     mergedImg.save(savePath)
     return
-
 
 def getRF(trimmedActivations, neuron, imgIDPaths):
     normalised = normaliseNeuron(trimmedActivations, neuron)
@@ -305,27 +304,6 @@ def measureBlobs():
         print(f"Blob {i}: Area={prop.area}, Mean Intensity={prop.mean_intensity:.2f}")
     return
 
-if __name__ == "__main__":
-    micePath = { #In alphabetical order for the 3312 neurons
-        "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
-        "Anton":r"C:\Users\augus\NIN_Stuff\data\koenData\Anton_20241123_1502_normcorr_SPSIG_Res.mat",
-        "Bell":r"C:\Users\augus\NIN_Stuff\data\koenData\Bell_20241122_1150_normcorr_SPSIG_Res.mat",
-        "Fctwente":r"C:\Users\augus\NIN_Stuff\data\koenData\Fctwente_20241011_001_normcorr_SPSIG_Res.mat",
-        "Feyenoord":r"C:\Users\augus\NIN_Stuff\data\koenData\Feyenoord_20241011_001_normcorr_SPSIG_Res.mat",
-        "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
-        "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Lana_20241012_001_normcorr_SPSIG_Res.mat",
-    }
-    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringentWithMinSpikes.csv"
-    inputCSV_all = r"c:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringent.csv"
-    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull"
-
-    muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Muckli4000Images")
-    images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\muckli4000npy")
-
-    measureBlobs()
-
-    
-
 def calcCleanRFs():
     calcRFs(micePath, inputCSV, saveFolder,baseIMGPath=images, overwrite=True)
     calcRFs(micePath, inputCSV_all, saveFolder, baseIMGPath=images, label="_noMinSpike")
@@ -353,3 +331,104 @@ def analysis_bulk():
 
     perform_analysis(dest, name_skip3, label1)
     perform_analysis(dest, name_skip31, label2)
+
+
+
+def calcRFsNew(row, neuronWeights,ImagesPath, saveFolder, label:str=""):
+
+    extension = ".png"
+    saveName = f"{row['Mouse']}_{row['mouseNeuron']}{label}"
+    #get receptive field
+
+    receptive_field = npImage(opti_weighted_average_images(ImagesPath, neuronWeights))
+    
+    #post processing to make the image more visible
+    receptive_field.blur(3, save=True)
+
+    FamiliarNO, FamiliarO, NovelNO, NovelO = row[['respFamiliarNO', 'respFamiliarO', 'respNovelNO', 'respNovelO']]
+
+    if FamiliarNO:
+        FamiliarNOPath = os.path.join(saveFolder, "FamiliarNotOccluded", saveName)
+        receptive_field.save(FamiliarNOPath, extension=extension)
+
+    if FamiliarO:
+        FamiliarOPath = os.path.join(saveFolder, "FamiliarOccluded", saveName)
+        receptive_field.save(FamiliarOPath, extension=extension)
+
+    if NovelNO:
+        NovelNOPath = os.path.join(saveFolder, "NovelNotOccluded", saveName)
+        receptive_field.save(NovelNOPath, extension=extension)
+
+    if NovelO:
+        NovelOPath = os.path.join(saveFolder, "NovelOccluded", saveName)
+        receptive_field.save(NovelOPath, extension=extension)
+
+def parallelCalcRFsNew(inputCSV, activationsPath,ImagesPath, saveFolder):
+    GoodNeurons = pd.read_csv(inputCSV)
+    neuronActivations = np.load(activationsPath)
+    imgIDPaths = np.load(ImagesPath, allow_pickle=True)
+
+    totalLen = len(GoodNeurons)
+ 
+    with ProcessPoolExecutor() as executor:
+    
+        for i, row in GoodNeurons.iterrows():
+            print(f"processing: neuron {i}/{totalLen}")
+            #calcRFsNew(row, neuronActivations[:, i], imgIDPaths, saveFolder)
+
+            executor.submit(calcRFsNew, row, neuronActivations[:, i], imgIDPaths, saveFolder)
+    return
+
+def getMax(imgPath) -> tuple[int, int]:
+    t_img = npImage(imgPath)
+    max_ = np.max(t_img.arr)
+    min_ = np.min(t_img.arr)
+    return (max_, min_)
+
+def globalNormalise(folderPaths):
+    
+    allPaths = []
+    for path in folderPaths:
+        t_path = Path(path)
+        for f in t_path.iterdir():
+            if f.is_file() and f.name != "Thumbs.db":
+                allPaths.append(f)
+
+    results = []
+    with ProcessPoolExecutor() as executor:
+        for path in allPaths:
+            results.append(executor.submit(getMax, path))
+
+        final_arr = []
+        for r in results:
+            final_arr.append(r.result())
+
+    np.save(r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\max_min_arr",final_arr)
+    return final_arr
+
+
+if __name__ == "__main__":
+    activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\normalisedNeuronActivations.npy"
+    passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\passedFilter.csv"
+    imagesPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\imagesInTrialOrder.npy"
+    destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis"
+    parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
+
+if False:
+    micePath = { #In alphabetical order for the 3312 neurons
+        "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
+        "Anton":r"C:\Users\augus\NIN_Stuff\data\koenData\Anton_20241123_1502_normcorr_SPSIG_Res.mat",
+        "Bell":r"C:\Users\augus\NIN_Stuff\data\koenData\Bell_20241122_1150_normcorr_SPSIG_Res.mat",
+        "Fctwente":r"C:\Users\augus\NIN_Stuff\data\koenData\Fctwente_20241011_001_normcorr_SPSIG_Res.mat",
+        "Feyenoord":r"C:\Users\augus\NIN_Stuff\data\koenData\Feyenoord_20241011_001_normcorr_SPSIG_Res.mat",
+        "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
+        "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Lana_20241012_001_normcorr_SPSIG_Res.mat",
+    }
+    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringentWithMinSpikes.csv"
+    inputCSV_all = r"c:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringent.csv"
+    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull"
+
+    muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Muckli4000Images")
+    images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\muckli4000npy")
+
+    measureBlobs()
