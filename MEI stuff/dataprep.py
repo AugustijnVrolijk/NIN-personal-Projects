@@ -81,9 +81,9 @@ def getNeuronActivations(signal:np.ndarray, cutBefore:int=9, cutAfter:int=-1):
 
     return avg
 
-def collateDataSheet(micePath, baseIMGPath):
+def collateDataSheet(micePath, baseIMGPath, saveFolder):
    
-    signalToUse = "CaDec"
+    signalToUse = "CaSig"
 
     NOandOScoresPath = r"C:\Users\augus\NIN_Stuff\data\koenData\dataForAugustijn\dataForAugustijn.mat"
     SNRandRSQScorePath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFByMiceData.mat"
@@ -103,8 +103,6 @@ def collateDataSheet(micePath, baseIMGPath):
 
     placeHolder = [np.nan] * totalN
     placeHolderInt = [-1] * totalN
-
-    neuronActivations = np.zeros((4000,totalN))
 
     finalData = pd.DataFrame({
         'Mouse': [None] * totalN,
@@ -161,7 +159,8 @@ def collateDataSheet(micePath, baseIMGPath):
 
         curN += mouseNeurons
 
-    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis"
+    saveFolder = Path(saveFolder)
+    saveFolder.mkdir(parents=True, exist_ok=True)
     infoPath = os.path.join(saveFolder, r"info.csv")
     finalData.to_csv(infoPath, index=False)
     neuronActivationsPath = os.path.join(saveFolder, r"normalisedNeuronActivations")
@@ -260,7 +259,6 @@ def getAllNeuronActivations(activationsPath, inputCSV, dest):
     neuronActivations = np.load(activationsPath)
 
     neuronIDs = GoodNeurons["NeuronID"]
-    totalLen = len(neuronIDs)
 
     a, b = neuronActivations.shape
     if a == 4000:
@@ -268,7 +266,6 @@ def getAllNeuronActivations(activationsPath, inputCSV, dest):
     elif b== 4000:
         finalActivations = neuronActivations[neuronIDs, :]
 
-    #normalised_arr = normaliseNeuron(neuronActivations)
     np.save(os.path.join(dest, r"FilteredNeuronActivations"), finalActivations)
     return
 
@@ -288,14 +285,18 @@ if __name__ == "__main__":
     infoPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseType\info.csv"
 
     muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Muckli4000Images")
-    activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\normalisedNeuronActivations.npy"
     imagesInOrderPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\imagesInTrialOrder.npy"
     images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\muckli4000npy")
+    
+    sigPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig"
+    #collateDataSheet(micePath, images, r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig")
+    
     #filterDataSheet(False, -1, -1, 35, True, 0.5, "lessStringentWithMinSpikes.csv", ignoreRSQSNR=True)
     #infoPath, neuronActivationsPath = collateDataSheet(micePath,images)
 
-    info = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\info.csv"
-    activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\normalisedNeuronActivations.npy"
-    #getMinSpikesAndFilter(info, activationsPath, 0.1, nSpikesThresh=20)
-    passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\passedFilter.csv"
-    getAllNeuronActivations(activationsPath,passedFilter,r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis")
+    info = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\info.csv"
+    SigActivationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\normalisedNeuronActivations.npy"
+    #getMinSpikesAndFilter(info, SigActivationsPath, 0.09, nSpikesThresh=25, saveFolder=sigPath)
+    passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\passedFilter.csv"
+
+    getAllNeuronActivations(SigActivationsPath,passedFilter,sigPath)

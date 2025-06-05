@@ -349,18 +349,10 @@ def execute_analysis(root_path, dest_path):
     rf_av = RF_weighted_average_images(root_path)
     rf_av.save(os.path.join(dest_path, f"RF_average.png"))
 
-def normalAnalysis():
-   
-    rootPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal"
-    destPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\analysis"
-
-    p1 = [r"NovelOccluded",
-          r"NovelNotOccluded",
-          r"FamiliarOccluded",
-          r"FamiliarNotOccluded"]
+def normalAnalysis(rootPath, destPath, folderNames):
 
     with ProcessPoolExecutor() as executor:
-        for p in p1:
+        for p in folderNames:
             root_path = Path(os.path.join(rootPath, p))
             dest_path = Path(os.path.join(destPath, p)) 
             executor.submit(execute_analysis, root_path, dest_path)
@@ -448,29 +440,53 @@ def globalNormalise(rootPath, folderNames, DestPath):
     with ProcessPoolExecutor() as executor:
         for path in allPaths:
             final_Path = Path(os.path.join(DestPath, path[0]))
+            final_Path.mkdir(exist_ok=True)
             results.append(executor.submit(applyNormalise, path[1], final_Path, t_max, t_min))
-
-        final_arr = []
-        for r in results:
-            final_arr.append(r.result())
 
     return t_max, t_min
 
-if __name__ == "__main__":
+def runCaSeg():
     activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\normalisedNeuronActivations.npy"
     passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\passedFilter.csv"
     imagesPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\imagesInTrialOrder.npy"
     destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis"
-    #parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
+
+    parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
     
-    rootPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis"
     p1 = [r"NovelOccluded",
           r"NovelNotOccluded",
           r"FamiliarOccluded",
           r"FamiliarNotOccluded"]
     destPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal"
     #max, min = 194, 39
-    normalAnalysis()
+    globalNormalise(destFolder, p1, destPath)
+
+    analysis_path = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\analysis"
+
+    normalAnalysis(destPath, analysis_path, p1)
+
+def runCaSig():
+    activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\normalisedNeuronActivations.npy"
+    passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\passedFilter.csv"
+    imagesPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\imagesInTrialOrder.npy"
+    destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig"
+
+    parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
+
+    p1 = [r"NovelOccluded",
+        r"NovelNotOccluded",
+        r"FamiliarOccluded",
+        r"FamiliarNotOccluded"]
+    destPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSigNormal"
+    #max, min = 194, 39
+    globalNormalise(destFolder, p1, destPath)
+
+    analysis_path = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSigNormal\analysis"
+
+    normalAnalysis(destPath, analysis_path, p1)
+
+if __name__ == "__main__":
+    runCaSig()
 
 if False:
     micePath = { #In alphabetical order for the 3312 neurons
