@@ -310,6 +310,7 @@ def calcCleanRFs():
     cleanRFs(inputCSV, inputCSV_all, saveFolder, label="_noMinSpike")
 
 def analysis_bulk():
+
     dest = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\analysis"
     dest1 = os.path.join(dest, r"novel")
     name_skip1 = ["true", "noMinSpike", "familiar"]
@@ -332,7 +333,37 @@ def analysis_bulk():
     perform_analysis(dest, name_skip3, label1)
     perform_analysis(dest, name_skip31, label2)
 
+@expand_folder_path
+def RF_weighted_average_images(paths:list[str]) -> npImage:
+   
+    total_matrix = npImage(paths[0]).arr
+   
+    for path in tqdm(paths):
+        total_matrix += npImage(paths[0]).arr
 
+    total_matrix /= len(paths)
+    return npImage(total_matrix)
+
+def execute_analysis(root_path, dest_path):
+    analyze_image_folder(root_path, dest_path, patch_size=30, resize=False)
+    rf_av = RF_weighted_average_images(root_path)
+    rf_av.save(os.path.join(dest_path, f"RF_average.png"))
+
+def normalAnalysis():
+   
+    rootPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal"
+    destPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\analysis"
+
+    p1 = [r"NovelOccluded",
+          r"NovelNotOccluded",
+          r"FamiliarOccluded",
+          r"FamiliarNotOccluded"]
+
+    with ProcessPoolExecutor() as executor:
+        for p in p1:
+            root_path = Path(os.path.join(rootPath, p))
+            dest_path = Path(os.path.join(destPath, p)) 
+            executor.submit(execute_analysis, root_path, dest_path)
 
 def calcRFsNew(row, neuronWeights,ImagesPath, saveFolder, label:str=""):
 
@@ -385,34 +416,61 @@ def getMax(imgPath) -> tuple[int, int]:
     min_ = np.min(t_img.arr)
     return (max_, min_)
 
-def globalNormalise(folderPaths):
-    
+def applyNormalise(imgPath, newFolder, r_max, r_min):
+    t_img = npImage(imgPath)
+    t_img.global_boostContrast(r_max, r_min)
+    t_img.save(newFolder)
+    return
+
+def globalNormalise(rootPath, folderNames, DestPath):
+
     allPaths = []
-    for path in folderPaths:
-        t_path = Path(path)
+    for path in folderNames:
+        t_path = Path(os.path.join(rootPath, path))
         for f in t_path.iterdir():
             if f.is_file() and f.name != "Thumbs.db":
-                allPaths.append(f)
+                allPaths.append([path, f])
 
     results = []
     with ProcessPoolExecutor() as executor:
         for path in allPaths:
-            results.append(executor.submit(getMax, path))
+            results.append(executor.submit(getMax, path[1]))
 
         final_arr = []
         for r in results:
             final_arr.append(r.result())
 
-    np.save(r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\max_min_arr",final_arr)
-    return final_arr
+    final_arr = np.array(final_arr)
 
+    t_max = np.max(final_arr)
+    t_min = np.min(final_arr)
+
+    with ProcessPoolExecutor() as executor:
+        for path in allPaths:
+            final_Path = Path(os.path.join(DestPath, path[0]))
+            results.append(executor.submit(applyNormalise, path[1], final_Path, t_max, t_min))
+
+        final_arr = []
+        for r in results:
+            final_arr.append(r.result())
+
+    return t_max, t_min
 
 if __name__ == "__main__":
     activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\normalisedNeuronActivations.npy"
     passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\passedFilter.csv"
     imagesPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\imagesInTrialOrder.npy"
     destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis"
-    parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
+    #parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
+    
+    rootPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis"
+    p1 = [r"NovelOccluded",
+          r"NovelNotOccluded",
+          r"FamiliarOccluded",
+          r"FamiliarNotOccluded"]
+    destPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal"
+    #max, min = 194, 39
+    normalAnalysis()
 
 if False:
     micePath = { #In alphabetical order for the 3312 neurons

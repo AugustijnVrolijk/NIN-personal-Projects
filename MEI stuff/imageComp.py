@@ -142,6 +142,11 @@ class npImage():
             self._init_from_Arr(contrast_stretched)
             
         return contrast_stretched
+
+    def global_boostContrast(self, r_max:int, r_min:int):
+        n_arr = 255*((self.arr-r_min)/(r_max-r_min))
+        self._init_from_Arr(n_arr)
+        return
     
     def gamma_correction(self, gamma:float, linearBoost=True, **kwargs) -> np.ndarray:
         curMax = np.max(self.arr)
