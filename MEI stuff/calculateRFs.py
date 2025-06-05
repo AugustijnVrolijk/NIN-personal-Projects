@@ -1,9 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import os
 import pandas as pd
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import Process
+from concurrent.futures import ThreadPoolExecutor
 import cv2
 
 from skimage import measure
@@ -14,6 +12,7 @@ from matLoader import loadMat
 from imageComp import opti_weighted_average_images, npImage, expand_folder_path
 from ImageAnalysis import analyze_image_folder, checkName
 from dataprep import getNeuronActivations
+from scipy.ndimage import gaussian_filter
 
 def normaliseNeuron(arr:np.ndarray, idx:int=None):
     #assume format is #trials , neurons
@@ -266,7 +265,7 @@ def blur_folder(paths:str, skip:list, dest, weight:float=0.2, sigma:float=15, la
         tasks.append((origin, temp_dest, weight, sigma))
 
 
-    with ProcessPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         list(tqdm(executor.map(blur_task, tasks)))
 
     return
@@ -303,11 +302,6 @@ def measureBlobs():
     for i, prop in enumerate(props):
         print(f"Blob {i}: Area={prop.area}, Mean Intensity={prop.mean_intensity:.2f}")
     return
-
-def calcCleanRFs():
-    calcRFs(micePath, inputCSV, saveFolder,baseIMGPath=images, overwrite=True)
-    calcRFs(micePath, inputCSV_all, saveFolder, baseIMGPath=images, label="_noMinSpike")
-    cleanRFs(inputCSV, inputCSV_all, saveFolder, label="_noMinSpike")
 
 def analysis_bulk():
 
@@ -351,7 +345,7 @@ def execute_analysis(root_path, dest_path):
 
 def normalAnalysis(rootPath, destPath, folderNames):
 
-    with ProcessPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         for p in folderNames:
             root_path = Path(os.path.join(rootPath, p))
             dest_path = Path(os.path.join(destPath, p)) 
@@ -360,46 +354,57 @@ def normalAnalysis(rootPath, destPath, folderNames):
 def calcRFsNew(row, neuronWeights,ImagesPath, saveFolder, label:str=""):
 
     extension = ".png"
-    saveName = f"{row['Mouse']}_{row['mouseNeuron']}{label}"
-    #get receptive field
+    saveName = f"{row['Mouse']}_{row['mouseNeuron']}{label}{extension}"
+    try:
+        raw_RF = opti_weighted_average_images(ImagesPath, neuronWeights).astype(np.float64)
+        corArr =  np.clip(raw_RF, 0, 255).astype(np.uint8)
+        blurred = gaussian_filter(corArr, sigma=8)
 
-    receptive_field = npImage(opti_weighted_average_images(ImagesPath, neuronWeights))
+        receptive_field = Image.fromarray(blurred, mode='L')
+
+        FamiliarNO, FamiliarO, NovelNO, NovelO = row[['respFamiliarNO', 'respFamiliarO', 'respNovelNO', 'respNovelO']]
+
+        if FamiliarNO:
+            FamiliarNOPath = os.path.join(saveFolder, "FamiliarNotOccluded", saveName)
+            receptive_field.save(FamiliarNOPath, format='PNG', optimize=True)
+
+        if FamiliarO:
+            FamiliarOPath = os.path.join(saveFolder, "FamiliarOccluded", saveName)
+            receptive_field.save(FamiliarOPath, format='PNG', optimize=True)
+
+        if NovelNO:
+            NovelNOPath = os.path.join(saveFolder, "NovelNotOccluded", saveName)
+            receptive_field.save(NovelNOPath, format='PNG', optimize=True)
+
+        if NovelO:
+            NovelOPath = os.path.join(saveFolder, "NovelOccluded", saveName)
+            receptive_field.save(NovelOPath, format='PNG', optimize=True)
+        
+        print(f"Completed saving: {saveName}, FNO:{FamiliarNO}, FO:{FamiliarO}, NNO:{NovelNO}, NO:{NovelO}", flush=True)
+        return
+    except Exception as e:
+        print(f"Failed to process neuron  {saveName}, {e}", flush=True)
+        return
     
-    #post processing to make the image more visible
-    receptive_field.blur(3, save=True)
-
-    FamiliarNO, FamiliarO, NovelNO, NovelO = row[['respFamiliarNO', 'respFamiliarO', 'respNovelNO', 'respNovelO']]
-
-    if FamiliarNO:
-        FamiliarNOPath = os.path.join(saveFolder, "FamiliarNotOccluded", saveName)
-        receptive_field.save(FamiliarNOPath, extension=extension)
-
-    if FamiliarO:
-        FamiliarOPath = os.path.join(saveFolder, "FamiliarOccluded", saveName)
-        receptive_field.save(FamiliarOPath, extension=extension)
-
-    if NovelNO:
-        NovelNOPath = os.path.join(saveFolder, "NovelNotOccluded", saveName)
-        receptive_field.save(NovelNOPath, extension=extension)
-
-    if NovelO:
-        NovelOPath = os.path.join(saveFolder, "NovelOccluded", saveName)
-        receptive_field.save(NovelOPath, extension=extension)
-
 def parallelCalcRFsNew(inputCSV, activationsPath,ImagesPath, saveFolder):
     GoodNeurons = pd.read_csv(inputCSV)
     neuronActivations = np.load(activationsPath)
     imgIDPaths = np.load(ImagesPath, allow_pickle=True)
 
+    assert neuronActivations.shape[0] == 4000
     totalLen = len(GoodNeurons)
- 
-    with ProcessPoolExecutor() as executor:
-    
+
+    futures = []
+    final = []
+    with ThreadPoolExecutor() as executor:
         for i, row in GoodNeurons.iterrows():
             print(f"processing: neuron {i}/{totalLen}")
             #calcRFsNew(row, neuronActivations[:, i], imgIDPaths, saveFolder)
 
-            executor.submit(calcRFsNew, row, neuronActivations[:, i], imgIDPaths, saveFolder)
+            futures.append(executor.submit(calcRFsNew, row, neuronActivations[:, i], imgIDPaths, saveFolder))
+
+        for r in futures:
+            final.append(r.result())
     return
 
 def getMax(imgPath) -> tuple[int, int]:
@@ -424,7 +429,7 @@ def globalNormalise(rootPath, folderNames, DestPath):
                 allPaths.append([path, f])
 
     results = []
-    with ProcessPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         for path in allPaths:
             results.append(executor.submit(getMax, path[1]))
 
@@ -437,7 +442,8 @@ def globalNormalise(rootPath, folderNames, DestPath):
     t_max = np.max(final_arr)
     t_min = np.min(final_arr)
 
-    with ProcessPoolExecutor() as executor:
+    final = []
+    with ThreadPoolExecutor() as executor:
         for path in allPaths:
             final_Path = Path(os.path.join(DestPath, path[0]))
             final_Path.mkdir(exist_ok=True)
@@ -445,11 +451,31 @@ def globalNormalise(rootPath, folderNames, DestPath):
 
     return t_max, t_min
 
-def runCaSeg():
+def runOLD():
+    micePath = { #In alphabetical order for the 3312 neurons
+        "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
+        "Anton":r"C:\Users\augus\NIN_Stuff\data\koenData\Anton_20241123_1502_normcorr_SPSIG_Res.mat",
+        "Bell":r"C:\Users\augus\NIN_Stuff\data\koenData\Bell_20241122_1150_normcorr_SPSIG_Res.mat",
+        "Fctwente":r"C:\Users\augus\NIN_Stuff\data\koenData\Fctwente_20241011_001_normcorr_SPSIG_Res.mat",
+        "Feyenoord":r"C:\Users\augus\NIN_Stuff\data\koenData\Feyenoord_20241011_001_normcorr_SPSIG_Res.mat",
+        "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
+        "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Lana_20241012_001_normcorr_SPSIG_Res.mat",
+    }
+    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringentWithMinSpikes.csv"
+    inputCSV_all = r"c:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringent.csv"
+    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull"
+
+    muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Muckli4000Images")
+    images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\muckli4000npy")
+
+    measureBlobs()
+
+
+def runCaDec():
     activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\normalisedNeuronActivations.npy"
     passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\passedFilter.csv"
     imagesPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\imagesInTrialOrder.npy"
-    destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis"
+    destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig"
 
     parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
     
@@ -471,12 +497,18 @@ def runCaSig():
     imagesPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\imagesInTrialOrder.npy"
     destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig"
 
-    parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
-
     p1 = [r"NovelOccluded",
         r"NovelNotOccluded",
         r"FamiliarOccluded",
         r"FamiliarNotOccluded"]
+
+    for p in p1:
+        t_path = os.path.join(destFolder, p)
+        Path(t_path).mkdir(exist_ok=True)
+
+    parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
+
+   
     destPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSigNormal"
     #max, min = 194, 39
     globalNormalise(destFolder, p1, destPath)
@@ -487,22 +519,3 @@ def runCaSig():
 
 if __name__ == "__main__":
     runCaSig()
-
-if False:
-    micePath = { #In alphabetical order for the 3312 neurons
-        "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
-        "Anton":r"C:\Users\augus\NIN_Stuff\data\koenData\Anton_20241123_1502_normcorr_SPSIG_Res.mat",
-        "Bell":r"C:\Users\augus\NIN_Stuff\data\koenData\Bell_20241122_1150_normcorr_SPSIG_Res.mat",
-        "Fctwente":r"C:\Users\augus\NIN_Stuff\data\koenData\Fctwente_20241011_001_normcorr_SPSIG_Res.mat",
-        "Feyenoord":r"C:\Users\augus\NIN_Stuff\data\koenData\Feyenoord_20241011_001_normcorr_SPSIG_Res.mat",
-        "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
-        "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Lana_20241012_001_normcorr_SPSIG_Res.mat",
-    }
-    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringentWithMinSpikes.csv"
-    inputCSV_all = r"c:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringent.csv"
-    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull"
-
-    muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Muckli4000Images")
-    images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\muckli4000npy")
-
-    measureBlobs()

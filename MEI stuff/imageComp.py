@@ -159,7 +159,7 @@ class npImage():
 
         return self.linearBoostContrast(matrix=gamma_raw, format_max=format_max, **kwargs)
 
-    def blur(self, sigma:float, save=True, **kwargs):
+    def blur(self, sigma:float, save=True):
         blurred = gaussian_filter(self.arr, sigma=sigma)
         
         if save:
@@ -300,7 +300,7 @@ def opti_weighted_average_images(paths:list[str], weights:list[float]) -> np.nda
     total_matrix = np.load(paths[0]) * weights[0]
   
     for i, val in tqdm(enumerate(weights[1:])):
-        if (val < 0.001) and (val > -0.001):
+        if (val < 0.025) and (val > -0.025):
             continue
         total_matrix += (np.load(paths[i+1]) * val)
         total_weight += val
