@@ -269,7 +269,13 @@ def getAllNeuronActivations(activationsPath, inputCSV, dest):
     np.save(os.path.join(dest, r"FilteredNeuronActivations"), finalActivations)
     return
 
-if __name__ == "__main__":
+def removeMeanFromActivations(activationsPath, savePath):
+    normalisedActivations = np.load(activationsPath)
+    arr_mean = np.mean(normalisedActivations, axis=0)
+    mean_corrected = normalisedActivations - arr_mean
+    np.save(os.path.join(savePath, r"meanCorrectedNeuronActivations"), mean_corrected)
+
+def randomDataPrepMain():
     micePath = { #In alphabetical order for the 3312 neurons
         "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
         "Anton":r"C:\Users\augus\NIN_Stuff\data\koenData\Anton_20241123_1502_normcorr_SPSIG_Res.mat",
@@ -300,3 +306,17 @@ if __name__ == "__main__":
     passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\passedFilter.csv"
 
     getAllNeuronActivations(SigActivationsPath,passedFilter,sigPath)
+
+if __name__ == "__main__":
+    activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\FilteredNeuronActivations.npy"
+    nActivationsPath = r"c:\Users\augus\NIN_Stuff\data\koenData\RFSig\meanCorrectedNeuronActivations.npy
+    #removeMeanFromActivations(activationsPath, r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig")
+    arr_mean = np.mean(nActivationsPath, axis=0)
+
+    arr_max = np.mean(nActivationsPath, axis=0)
+
+    arr_min = np.mean(nActivationsPath, axis=0)
+
+    arr_std = np.mean(nActivationsPath, axis=0)
+
+    pass
