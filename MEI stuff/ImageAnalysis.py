@@ -41,17 +41,21 @@ def compute_entropy_map(img_gray, patch_size=16):
             entropy_map[i*patch_size:(i+1)*patch_size, j*patch_size:(j+1)*patch_size] = entropy
     return entropy_map
 
-def compute_edge_grid(img_gray, grid_size=(18, 32)):
+def compute_edge_grid(img_gray, patch_size=16):
     edges = sobel(img_gray)
-    h, w = edges.shape
-    gh, gw = grid_size
-    cell_h, cell_w = h // gh, w // gw
-    grid = np.zeros((gh, gw))
+    height, width = edges.shape
+    patch_size = smallest_common_divisor_above_threshold(height, width, patch_size)
+    if patch_size is None or patch_size > 50:
+        raise ValueError("bad patch_size")
+    grid = np.zeros_like(img_gray, dtype=np.float32)
 
-    for i in range(gh):
-        for j in range(gw):
-            patch = edges[i*cell_h:(i+1)*cell_h, j*cell_w:(j+1)*cell_w]
-            grid[i, j] = patch.mean()
+    windows = view_as_windows(edges, (patch_size, patch_size), step=patch_size)
+    for i in range(windows.shape[0]):
+        for j in range(windows.shape[1]):
+            patch = windows[i, j]
+            average = patch.mean()
+            grid[i*patch_size:(i+1)*patch_size, j*patch_size:(j+1)*patch_size] = average
+
     return grid
 
 def load_and_resize_image(image_path, resize = True,**kwargs):
@@ -86,7 +90,7 @@ def analyze_image(image_path, save=False, **kwargs):
 
     saliency_map = compute_saliency_map(img_gray)
     entropy_map = compute_entropy_map(img_gray, **kwargs)
-    edge_grid = compute_edge_grid(img_gray)
+    edge_grid = compute_edge_grid(img_gray, **kwargs)
 
     # Save results
     if save:
@@ -95,13 +99,7 @@ def analyze_image(image_path, save=False, **kwargs):
     
         plt.imsave(output_dir / f"saliency_{image_id}.png", saliency_map, cmap='hot')
         plt.imsave(output_dir / f"entropy_{image_id}.png", entropy_map, cmap='hot')
-
-        plt.figure()
-        plt.title(f"Edge Grid (3x3) - Image {image_id}")
-        plt.imshow(edge_grid, cmap='hot')
-        plt.colorbar()
-        plt.savefig(output_dir / f"edge_grid_{image_id}.png")
-        plt.close()
+        plt.imsave(output_dir / f"edge_grid_{image_id}.png", edge_grid, cmap='hot')
 
         print(f"Analysis complete for image {image_id}. Results saved in '{output_dir}/'.")
         
@@ -157,14 +155,8 @@ def analyze_image_folder(folder_path, save_dir:str|Path, label:str="",name_skip:
     os.makedirs(save_dir, exist_ok=True)
     plt.imsave(os.path.join(save_dir,f"saliency_average{label}.png"), saliency_avg, cmap='hot')
     plt.imsave(os.path.join(save_dir,f"entropy_average{label}.png"), entropy_avg, cmap='hot')
-    """
-    plt.imsave(os.path.join(save_dir,f"{label}edge_grid_average.png"), edge_grid_avg, cmap='hot')
-    """
-    plt.figure()
-    plt.title("Mean Edge Grid (3x3)")
-    plt.imshow(edge_grid_avg, cmap='hot')
-    plt.savefig(os.path.join(save_dir,f"edge_grid_average{label}.png"))
-    
+    plt.imsave(os.path.join(save_dir,f"edge_grid_average{label}.png"), edge_grid_avg, cmap='hot')
+ 
     print(f"Analysis complete. Results saved in {save_dir}'.")
 
 # Example usage

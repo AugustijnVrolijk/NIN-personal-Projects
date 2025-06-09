@@ -1,6 +1,9 @@
 from scipy.ndimage import gaussian_filter
+from skimage.feature import blob_dog, blob_log, blob_doh
 import cv2
 import numpy as np
+
+from imageComp import npImage
 
 def laplace(imagePath):
     # Load receptive field image as grayscale array
@@ -26,7 +29,6 @@ def difference_of_gaussians(image):
     dog = g1 - g2
     contrast_metric = np.var(dog)
 
-
 def fit_gaussian(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     x, y = coords
     xo = float(xo)
@@ -39,16 +41,39 @@ def fit_gaussian(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     )
     return g.ravel()
 
+
+def showBlobs(image, blobs):
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+    ax.imshow(image, cmap='gray')
+    for blob in blobs:
+        y, x, r = blob
+        circle = plt.Circle((x, y), r, color='red', fill=False)
+        ax.add_patch(circle)
+    plt.show()
+
+
 if __name__ == "__main__":
     # Example usage
-    img1 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Anton_54.png"
-    laplace(img1) #very good
+    imgs = [r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Anton_49.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Anton_54.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Ajax_305.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Ajax_387.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Fctwente_13.png"
+            ]
 
-    img2 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Ajax_305.png"
-    laplace(img2) #bad ish
-
-    img2 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Ajax_387.png"
-    laplace(img2) #very bad
-
-    img2 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Fctwente_13.png"
-    laplace(img2) #bad
+    for path in imgs:
+        print(f"Processing {path}")
+        image = npImage(path)
+        image.blur()
+        # Apply Gaussian blur
+        blurred = cv2.GaussianBlur(image, (35, 35), sigmaX=3)
+        min_sigma = 10
+        max_sigma = 400
+        thresh = 0.01
+        res = blob_doh(image, min_sigma=min_sigma, max_sigma=max_sigma, threshold=thresh, threshold_rel=thresh)
+        print(f"Found {len(res)} blobs in {path}")
+        showBlobs(image, res)
+        print("here")
+        # difference_of_gaussians(img)
+        # fit_gaussian(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, offset)

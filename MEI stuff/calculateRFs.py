@@ -485,7 +485,6 @@ def runCaDec():
           r"FamiliarNotOccluded"]
 
     destPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal"
-    #max, min = 194, 39
     globalNormalise(destFolder, p1, destPath)
 
     analysis_path = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\analysis"
@@ -507,7 +506,7 @@ def runCaSig():
         t_path = os.path.join(destFolder, p)
         Path(t_path).mkdir(exist_ok=True)
 
-    parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
+    #parallelCalcRFsNew(passedFilter, activationsPath, imagesPath, destFolder)
 
     
     destPath = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\RFSigNormal")
@@ -516,8 +515,7 @@ def runCaSig():
     for p in p1:
         t_path = os.path.join(destPath, p)
         Path(t_path).mkdir(exist_ok=True)
-    #max, min = 194, 39
-    globalNormalise(destFolder, p1, destPath)
+    #globalNormalise(destFolder, p1, destPath)
 
     analysis_path = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSigNormal\analysis"
 
