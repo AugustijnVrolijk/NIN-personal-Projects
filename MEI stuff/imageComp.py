@@ -103,6 +103,9 @@ class npImage():
         else:
             self.img.save(path, format='PNG', optimize=True)
 
+    def inverse(self: np.ndarray) -> np.ndarray:
+        return (255 - self.arr)
+
     @staticmethod
     def _is_grayscale(img:PIL.Image.Image):
         """
@@ -149,15 +152,14 @@ class npImage():
         return
     
     def gamma_correction(self, gamma:float, linearBoost=True, **kwargs) -> np.ndarray:
-        curMax = np.max(self.arr)
         gamma_raw = np.power(self.arr, gamma)
 
         if linearBoost:
-            format_max = 255
+            return self.linearBoostContrast(matrix=gamma_raw, format_max=255, **kwargs)
         else:
-            format_max = curMax
+            return gamma_raw
 
-        return self.linearBoostContrast(matrix=gamma_raw, format_max=format_max, **kwargs)
+        
 
     def blur(self, sigma:float, save=True):
         blurred = gaussian_filter(self.arr, sigma=sigma)

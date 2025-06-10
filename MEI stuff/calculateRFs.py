@@ -451,6 +451,9 @@ def globalNormalise(rootPath, folderNames, DestPath):
 
     return t_max, t_min
 
+def generateRandoms():
+    pass
+
 def runOLD():
     micePath = { #In alphabetical order for the 3312 neurons
         "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
@@ -470,6 +473,8 @@ def runOLD():
 
     measureBlobs()
 
+def runRandomTest():
+    pass
 
 def runCaDec():
     activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\normalisedNeuronActivations.npy"
