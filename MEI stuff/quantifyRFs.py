@@ -7,6 +7,7 @@ from matplotlib.patches import Ellipse
 from imageComp import npImage
 from scipy.optimize import curve_fit
 from pathlib import Path
+from imageComp import expand_folder_path
 
 def fit_gaussian(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y):
     """
@@ -246,7 +247,7 @@ def apply_blob_log(path):
     res = np.vstack((res1, res2))
 
 
-def apply_blob_doh():
+def apply_blob_doh(path):
     raw_image = npImage(path)
     raw_image.blur(15)
     raw_image.gamma_correction(1.5)
@@ -260,22 +261,8 @@ def apply_blob_doh():
     thresh = 0.5
 
     res = blob_doh(image, min_sigma=min_sigma, max_sigma=max_sigma, num_sigma=n,threshold=thresh, threshold_rel=thresh)
-    
-if __name__ == "__main__":
-    # Example usage
 
-    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFquantification"
-
-    imgs = [r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Anton_49.png",
-            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Anton_54.png",
-            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Ajax_305.png",
-            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Ajax_387.png",
-            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Fctwente_13.png",
-            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Lana_347.png",
-            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\NovelNotOccluded\Ajax_96.png",
-            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\NovelNotOccluded\Anton_408.png",
-            ]
-
+def apply_blob_fitting_dog(saveFolder, imgs):
     extension = ".png"
 
     for path in imgs:
@@ -318,3 +305,58 @@ if __name__ == "__main__":
         fig.savefig(os.path.join(saveFolder, f"{name}_gauss{extension}"))
 
         plt.close(fig)
+    return
+
+@expand_folder_path
+def comp_extra_intra(images):
+    total = len(images)
+    intra = np.ndarray(total)
+    extra = np.ndarray(total)
+    for i, path in enumerate(images):
+        #print(f"Processing {i+1}/{total}: {path}")
+        im_arr = npImage(path).arr
+        y,x = im_arr.shape
+        left_T = im_arr[:int(y/2), :int(x/2)]
+        right_T = im_arr[:int(y/2), int(x/2):]
+        left_B = im_arr[int(y/2):, :int(x/2)]
+        right_B = im_arr[int(y/2):, int(x/2):]
+
+        intra[i] = left_T.mean()
+        extra[i] = (left_B.mean()+right_T.mean()+right_B.mean())/3
+    
+    return intra, extra
+
+def compare_folder(destFolder, savePath):
+    
+    conditionNames = ["FamiliarNotOccluded",
+                      "FamiliarOccluded", 
+                      "NovelNotOccluded", 
+                      "NovelOccluded"]
+    
+
+    for name in conditionNames:
+        cond_path = os.path.join(destFolder, name)
+        intra, extra = comp_extra_intra(cond_path)
+        print(f"{name}:\n")
+        print(f"Intra: {intra.mean():.2f} ± {intra.std():.2f}")
+        print(f"Extra: {extra.mean():.2f} ± {extra.std():.2f}\n")
+    return
+
+if __name__ == "__main__":
+    # Example usage
+
+    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFquantification"
+
+    imgs = [r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Anton_49.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Anton_54.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Ajax_305.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Ajax_387.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Fctwente_13.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Lana_347.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\NovelNotOccluded\Ajax_96.png",
+            r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\NovelNotOccluded\Anton_408.png",
+            ]
+
+    img1 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded"
+    cond_folder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSigNormal"
+    compare_folder(cond_folder, None)
