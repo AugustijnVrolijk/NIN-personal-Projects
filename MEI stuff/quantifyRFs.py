@@ -6,10 +6,15 @@ from skimage.feature import blob_dog, blob_log, blob_doh
 from matplotlib.patches import Ellipse
 from imageComp import npImage
 from scipy.optimize import curve_fit
+#from scipy.integrate import simpson
 from pathlib import Path
 from imageComp import expand_folder_path
+from concurrent.futures import ThreadPoolExecutor
 
-def fit_gaussian(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y):
+
+
+
+def fit_gaussian(coords, amplitude, xo, yo, sigma_x, sigma_y, theta):
     """
     amplitude = peak height of the Gaussian.
 
@@ -32,9 +37,16 @@ def fit_gaussian(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, skew_x, ske
     )
 
     # Affine skew term added linearly
-    skew_term = skew_x * (x - xo) + skew_y * (y - yo)
+    return gauss
 
-    return (gauss + skew_term).ravel()
+def fit_gaussian_skew(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y):
+    x,y = coords
+    skew_term = skew_x * (x - xo) + skew_y * (y - yo)
+    gaussian = fit_gaussian(coords, amplitude, xo, yo, sigma_x, sigma_y, theta)
+    return (gaussian + skew_term)
+
+def ravel_fit_gaussian_skew(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y):
+    return fit_gaussian_skew(coords, amplitude, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y).ravel()
 
 def getPatchCoords(image:np.ndarray, blob:np.ndarray, buffer_ratio:int, is_doh:bool=False):
     assert len(blob) == 3, "Blob must contain at least (y, x, sigma)"
@@ -90,37 +102,74 @@ def fit_blob_to_patch(image, blob, buffer_ratio=1.5, is_doh=False):
     # Extract a patch around the blob
     patch, ret_blob, ret_flags = getPatchCoords(image, blob, buffer_ratio, is_doh)
     t_y, t_x, sigma = ret_blob
-    x_corr, y_corr, is_neg = ret_flags
+    x_corr, y_corr, _ = ret_flags
     # Create coordinate grid
     x_coords, y_coords = patch.shape
-    y = np.arange(x_coords)
-    x = np.arange(y_coords)
-    x, y = np.meshgrid(x, y)
+    r_y = np.arange(x_coords)
+    r_x = np.arange(y_coords)
+    m_x, m_y = np.meshgrid(r_x, r_y)
 
     #showBlobs(patch, [(t_y, t_x, blob[2])])  # Show the patch with the blob center
     # Initial guess for Gaussian parameters
     initial_guess = (
-        patch.mean() + patch.std(),  # amplitude
-        t_x, t_y,                     # center
-        sigma, sigma,              # sigma_x, sigma_y
-        0,                         # theta (no rotation to start)
+        patch.mean() + patch.std(), # amplitude
+        t_x, t_y,                   # center
+        sigma, sigma,               # sigma_x, sigma_y
+        0,                          # theta (no rotation to start)
         0, 0                        # skew_x, skew_y (no skew to start)
     )
 
     # Fit
     try:
-        popt, _ = curve_fit(fit_gaussian, (x, y), patch.ravel(), p0=initial_guess)
+        popt, _ = curve_fit(ravel_fit_gaussian_skew, (m_x, m_y), patch.ravel(), p0=initial_guess)
     except RuntimeError as e:
         print("Fit failed.")
         raise e
-    #popt = amplitute, xo, yo, sigma_x, sigma_y, theta
-
-    #show_gaussian_fits(patch, [popt])
-
-    popt[1] += x_corr
-    popt[2] += y_corr
+    
+    """ show images for debugging
+    plt.imshow(patch)
+    gauss_skew = fit_gaussian_skew((m_x, m_y), *popt)
+    gauss = fit_gaussian((m_x, m_y), *popt[:-2])  # Exclude skew parameters for volume calculation
+    plt.imshow(gauss)
+    plt.imshow(gauss_skew)
+    """
+    
+    popt[1] += x_corr # Adjust x center based on patch coordinates
+    popt[2] += y_corr # Adjust y center based on patch coordinates
 
     return popt
+
+def confidence_bounding_box(sigma_x, sigma_y, theta, Z=1):
+    """
+    Returns the minimal axis-aligned box around a rotated ellipse
+    defined by the Gaussian confidence region. ~ around 40% confidence for z=1
+    """
+    # Compute ellipse axes in x and y directions
+    x_radius = Z * np.sqrt((sigma_x * np.cos(theta))**2 + (sigma_y * np.sin(theta))**2)
+    y_radius = Z * np.sqrt((sigma_x * np.sin(theta))**2 + (sigma_y * np.cos(theta))**2)
+
+    r_x = np.arange(2*x_radius)
+    r_y = np.arange(2*y_radius)
+    m_x, m_y = np.meshgrid(r_x, r_y)
+
+    return m_x, m_y, x_radius, y_radius
+
+def calcVolume(amplitude, sigma_x, sigma_y, theta):
+    Z = 0.5  # Confidence level, e.g., Z=1 for ~40% confidence
+
+    m_x, m_y, x0, y0 = confidence_bounding_box(sigma_x, sigma_y, theta, Z)
+    gauss = fit_gaussian((m_x, m_y), amplitude, x0, y0, sigma_x, sigma_y, theta)
+    #gauss_and_skew = fit_gaussian_skew((m_x, m_y), *popt)
+    threshold = amplitude * np.exp((Z**2)/-2)# Threshold for volume calculation
+    
+    filtered_gauss = gauss[gauss > threshold]
+    
+    #mask = (gauss >= threshold)
+    #masked_gauss = np.where(mask, gauss, 0)
+    #plt.imshow(masked_gauss)
+
+    volume = filtered_gauss.sum()
+    return volume
 
 def showBlobsDoh(image, blobs):
     fig, ax = plt.subplots()
@@ -161,7 +210,7 @@ def show_gaussian_fits(image, gaussian_params_list):
     alphas = [0.4, 0.8]
 
     for params in gaussian_params_list:
-        amplitude, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y = params
+        _, xo, yo, sigma_x, sigma_y, theta, _, _ = params
         angle_deg = -np.degrees(theta)
 
         for level, color, alpha in zip(levels, colors, alphas):
@@ -184,7 +233,6 @@ def show_gaussian_fits(image, gaussian_params_list):
             )
             ax.add_patch(ellipse)
 
-    plt.title("Fitted anisotropic Gaussians, skew is not shown")
     return fig
 
 def filter_blobs(blobs, min_x=10, max_x=1000, min_y=10, max_y=500):
@@ -262,6 +310,41 @@ def apply_blob_doh(path):
 
     res = blob_doh(image, min_sigma=min_sigma, max_sigma=max_sigma, num_sigma=n,threshold=thresh, threshold_rel=thresh)
 
+def quantifyRF(originImg, destImg):
+    raw = npImage(originImg).arr
+
+    raw_res = apply_blob_dog(originImg)
+    res = filter_blobs(raw_res)
+
+    finalGauss = []
+    final_volume = 0
+    for blob in res:
+        params = fit_blob_to_patch(raw, blob, buffer_ratio=1.5, is_doh=False)
+        amplitute, _, _, sigma_x, sigma_y, theta, _, _ = params
+        #amplitute, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y
+        volume = calcVolume(amplitute, sigma_x, sigma_y, theta)  # Calculate volume based on fitted parameters
+        
+        finalGauss.append(params)
+        final_volume += volume
+
+        """ debugging output
+        amplitude, x1, y1, sigma_x, sigma_y, theta, skew_x, skew_y = params
+        y0, x0, sigma = blob[:3]
+        sigma = int(np.sqrt(2)*sigma)
+        print(f"Fitted parameters:\n"
+                "           orig | fitted\n"
+                f"x:         {int(x0)}  | {int(x1)}\n"
+                f"y:         {int(y0)}  | {int(y1)})\n"
+                f"sigma:     {int(sigma)}  | {int(sigma_x)}, {int(sigma_y)}\n"
+                f"skew:      n\\a  | {skew_x}, {skew_y}\n"
+                f"amplitude: n\\a  | {int(amplitude)}\n"
+                f"theta:     n\\a  | {theta}\n")
+        """
+    fig = show_gaussian_fits(raw, finalGauss)
+    fig.savefig(destImg)
+    plt.close(fig)
+    return final_volume
+
 def apply_blob_fitting_dog(saveFolder, imgs):
     extension = ".png"
 
@@ -288,6 +371,10 @@ def apply_blob_fitting_dog(saveFolder, imgs):
         finalGauss = []
         for blob in res:
             params = fit_blob_to_patch(raw, blob, buffer_ratio=1.5, is_doh=False)
+            amplitute, _, _, sigma_x, sigma_y, theta, _, _ = params
+            #params = amplitute, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y
+            volume = calcVolume(amplitute, sigma_x, sigma_y, theta)  # Calculate volume based on fitted parameters
+
             amplitude, x1, y1, sigma_x, sigma_y, theta, skew_x, skew_y = params
             y0, x0, sigma = blob[:3]
             sigma = int(np.sqrt(2)*sigma)
@@ -332,19 +419,37 @@ def compare_folder(destFolder, savePath):
                       "FamiliarOccluded", 
                       "NovelNotOccluded", 
                       "NovelOccluded"]
-    
 
     for name in conditionNames:
         cond_path = os.path.join(destFolder, name)
         intra, extra = comp_extra_intra(cond_path)
+        diff = np.abs(intra - extra)
         print(f"{name}:\n")
-        print(f"Intra: {intra.mean():.2f} ± {intra.std():.2f}")
-        print(f"Extra: {extra.mean():.2f} ± {extra.std():.2f}\n")
+        print(f"Intra:      {intra.mean():.2f} ± {intra.std():.2f}")
+        print(f"Extra:      {extra.mean():.2f} ± {extra.std():.2f}")
+        print(f"Difference: {diff.mean():.2f} ± {diff.std():.2f}\n")
     return
 
-if __name__ == "__main__":
-    # Example usage
+def paraQuantRFs(rootPath, folderNames, saveFolder):
 
+    allPaths = []
+    for path in folderNames:
+        t_path = Path(os.path.join(rootPath, path))
+        for f in t_path.iterdir():
+            if f.is_file() and f.name != "Thumbs.db":
+                allPaths.append([path, f])
+
+    results = []
+    with ThreadPoolExecutor() as executor:
+        for path in allPaths:
+            results.append(executor.submit(getMax, path[1]))
+
+        final_arr = []
+        for r in results:
+            final_arr.append(r.result())
+    return
+
+def random():
     saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFquantification"
 
     imgs = [r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded\Anton_49.png",
@@ -358,5 +463,21 @@ if __name__ == "__main__":
             ]
 
     img1 = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal\FamiliarNotOccluded"
-    cond_folder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSigNormal"
-    compare_folder(cond_folder, None)
+    cond_folder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysisNormal"
+    #compare_folder(cond_folder, None)
+    apply_blob_fitting_dog(saveFolder, imgs)
+
+def quantRFs():
+    originFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig"
+    destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFquantification"
+
+    subFolders = [r"NovelOccluded",
+          r"NovelNotOccluded",
+          r"FamiliarOccluded",
+          r"FamiliarNotOccluded"]
+    
+    paraQuantRFs(originFolder, subFolders, destFolder)
+    
+
+if __name__ == "__main__":
+    calcRFs()
