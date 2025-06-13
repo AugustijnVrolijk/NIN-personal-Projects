@@ -1,7 +1,12 @@
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use("Agg")
+import pandas as pd
 import os
 
+
+from tqdm import tqdm
 from skimage.feature import blob_dog, blob_log, blob_doh
 from matplotlib.patches import Ellipse
 from imageComp import npImage
@@ -311,40 +316,45 @@ def apply_blob_doh(path):
     res = blob_doh(image, min_sigma=min_sigma, max_sigma=max_sigma, num_sigma=n,threshold=thresh, threshold_rel=thresh)
 
 def quantifyRF(originImg, destImg):
-    raw = npImage(originImg).arr
+    try:
+        raw = npImage(originImg).arr
 
-    raw_res = apply_blob_dog(originImg)
-    res = filter_blobs(raw_res)
+        raw_res = apply_blob_dog(originImg)
+        res = filter_blobs(raw_res)
 
-    finalGauss = []
-    final_volume = 0
-    for blob in res:
-        params = fit_blob_to_patch(raw, blob, buffer_ratio=1.5, is_doh=False)
-        amplitute, _, _, sigma_x, sigma_y, theta, _, _ = params
-        #amplitute, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y
-        volume = calcVolume(amplitute, sigma_x, sigma_y, theta)  # Calculate volume based on fitted parameters
-        
-        finalGauss.append(params)
-        final_volume += volume
+        finalGauss = []
+        final_volume = 0
+        for blob in res:
+            params = fit_blob_to_patch(raw, blob, buffer_ratio=1.5, is_doh=False)
+            amplitute, _, _, sigma_x, sigma_y, theta, _, _ = params
+            #amplitute, xo, yo, sigma_x, sigma_y, theta, skew_x, skew_y
+            volume = calcVolume(amplitute, sigma_x, sigma_y, theta)  # Calculate volume based on fitted parameters
+            
+            finalGauss.append(params)
+            final_volume += volume
 
-        """ debugging output
-        amplitude, x1, y1, sigma_x, sigma_y, theta, skew_x, skew_y = params
-        y0, x0, sigma = blob[:3]
-        sigma = int(np.sqrt(2)*sigma)
-        print(f"Fitted parameters:\n"
-                "           orig | fitted\n"
-                f"x:         {int(x0)}  | {int(x1)}\n"
-                f"y:         {int(y0)}  | {int(y1)})\n"
-                f"sigma:     {int(sigma)}  | {int(sigma_x)}, {int(sigma_y)}\n"
-                f"skew:      n\\a  | {skew_x}, {skew_y}\n"
-                f"amplitude: n\\a  | {int(amplitude)}\n"
-                f"theta:     n\\a  | {theta}\n")
-        """
-    fig = show_gaussian_fits(raw, finalGauss)
-    fig.savefig(destImg)
-    plt.close(fig)
-    return final_volume
-
+            """ debugging output
+            amplitude, x1, y1, sigma_x, sigma_y, theta, skew_x, skew_y = params
+            y0, x0, sigma = blob[:3]
+            sigma = int(np.sqrt(2)*sigma)
+            print(f"Fitted parameters:\n"
+                    "           orig | fitted\n"
+                    f"x:         {int(x0)}  | {int(x1)}\n"
+                    f"y:         {int(y0)}  | {int(y1)})\n"
+                    f"sigma:     {int(sigma)}  | {int(sigma_x)}, {int(sigma_y)}\n"
+                    f"skew:      n\\a  | {skew_x}, {skew_y}\n"
+                    f"amplitude: n\\a  | {int(amplitude)}\n"
+                    f"theta:     n\\a  | {theta}\n")
+            """
+        fig = show_gaussian_fits(raw, finalGauss)
+        fig.savefig(destImg)
+        plt.close(fig)
+        return final_volume
+    except Exception as e:
+        print(f"failed to process {originImg}")
+        #raise e
+        return 0
+    
 def apply_blob_fitting_dog(saveFolder, imgs):
     extension = ".png"
 
@@ -433,20 +443,38 @@ def compare_folder(destFolder, savePath):
 def paraQuantRFs(rootPath, folderNames, saveFolder):
 
     allPaths = []
-    for path in folderNames:
-        t_path = Path(os.path.join(rootPath, path))
+    for dirName in folderNames:
+        t_path = Path(os.path.join(rootPath, dirName))
+        dest_path = Path(os.path.join(saveFolder, dirName))
+        dest_path.mkdir(exist_ok=True)
+
         for f in t_path.iterdir():
             if f.is_file() and f.name != "Thumbs.db":
-                allPaths.append([path, f])
+                savePath = Path(os.path.join(saveFolder,dirName,f.name))
+                allPaths.append([f, savePath, dirName, f.stem])
 
+    final_res = {name:[] for name in folderNames}
     results = []
     with ThreadPoolExecutor() as executor:
-        for path in allPaths:
-            results.append(executor.submit(getMax, path[1]))
+        for path in tqdm(allPaths):
+            results.append((executor.submit(quantifyRF, path[0], path[1]), path[2], path[3]))
 
-        final_arr = []
-        for r in results:
-            final_arr.append(r.result())
+        
+        for pair in tqdm(results):
+            res, condition, name = pair
+            t_res = res.result()/1000000 #area under is always in the millions
+            final_res[condition].append((name, t_res))
+    
+    analysisPath = Path(os.path.join(saveFolder, "analysis"))
+    analysisPath.mkdir(exist_ok=True)
+    for key in final_res.keys():  
+        df = pd.DataFrame(final_res[key], columns=["Name", "AOC / 1000000"])
+        vals = df["AOC / 1000000"].to_numpy()
+        print(f"{key}:\n",
+              f"mean: {vals.mean()}\n",
+              f"std:  {vals.std()}\n")
+
+        df.to_csv(os.path.join(analysisPath, f"{key}_results.csv"), index=False)
     return
 
 def random():
@@ -468,7 +496,7 @@ def random():
     apply_blob_fitting_dog(saveFolder, imgs)
 
 def quantRFs():
-    originFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig"
+    originFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSigNormal"
     destFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFquantification"
 
     subFolders = [r"NovelOccluded",
@@ -480,4 +508,5 @@ def quantRFs():
     
 
 if __name__ == "__main__":
-    calcRFs()
+    quantRFs()
+    
