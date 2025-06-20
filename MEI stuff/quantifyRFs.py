@@ -176,15 +176,6 @@ def calcVolume(amplitude, sigma_x, sigma_y, theta):
     volume = filtered_gauss.sum()
     return volume
 
-def showBlobsDoh(image, blobs):
-    fig, ax = plt.subplots()
-    ax.imshow(image, cmap='gray')
-    for blob in blobs:
-        y, x, r = blob
-        circle = plt.Circle((x, y), r, color='red', fill=False)
-        ax.add_patch(circle)
-    plt.show()
-
 def showBlobs(image, blobs):
     fig, ax = plt.subplots()
     ax.imshow(image, cmap='gray')
@@ -281,25 +272,6 @@ def apply_blob_dog(path):
     res = np.vstack((res1, res2))
     return res
 
-def apply_blob_log(path):
-    raw_image = npImage(path)
-    #raw_image.blur(15)
-
-    inv = npImage(raw_image.inverse())
-
-    inv = inv.gamma_correction(1.5, linearBoost=False)
-    raw = raw_image.gamma_correction(1.5, linearBoost=False)
-
-    min_sigma = 70
-    max_sigma = 150
-    thresh = 0.9
-
-    res1 = blob_log(raw, min_sigma=min_sigma, max_sigma=max_sigma,threshold=thresh, threshold_rel=thresh)
-    res2 = blob_log(inv, min_sigma=min_sigma, max_sigma=max_sigma,threshold=thresh, threshold_rel=thresh)
-
-    res = np.vstack((res1, res2))
-
-
 def apply_blob_doh(path):
     raw_image = npImage(path)
     raw_image.blur(15)
@@ -314,6 +286,7 @@ def apply_blob_doh(path):
     thresh = 0.5
 
     res = blob_doh(image, min_sigma=min_sigma, max_sigma=max_sigma, num_sigma=n,threshold=thresh, threshold_rel=thresh)
+    return res
 
 def quantifyRF(originImg, destImg):
     try:

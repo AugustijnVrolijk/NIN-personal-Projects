@@ -43,7 +43,7 @@ def convertStr2Tuple(func):
     return inner
 
 @convertStr2Tuple
-def checkRSQSNR(snr, rsq, enforce:bool=True, SNRthreshold:float=4, RSQthreshold:float=0.33):
+def checkRSQSNR(snr, rsq, enforce:bool=False, SNRthreshold:float=4, RSQthreshold:float=0.33):
     light = False
     if snr[0] > SNRthreshold and rsq[0] > RSQthreshold:
         light = True
@@ -108,15 +108,21 @@ def collateDataSheet(micePath, baseIMGPath, saveFolder):
         'Mouse': [None] * totalN,
         'Neuron': placeHolderInt,
         'RFscore': NOandOScores[:, 0],
-        'RSQscore': placeHolder,
-        'SNRscore': placeHolder,
+        'onRSQ': placeHolder,
+        'offRSQ': placeHolder,
+        'onSNR': placeHolder,
+        'offSNR': placeHolder,
+        'onFWHM': placeHolder,
+        'offFWHM': placeHolder,
+        'onAzi': placeHolder,
+        'offAzi': placeHolder,
+        'onEle': placeHolder,
+        'offEle': placeHolder,
         'respFamiliarNO': NOandOScores[:, 1],
         'respFamiliarO': NOandOScores[:, 2],
         'respNovelNO': NOandOScores[:, 3],
         'respNovelO': NOandOScores[:, 4]
     })
-    finalData['RSQscore'] = finalData['RSQscore'].astype(object)
-    finalData['SNRscore'] = finalData['SNRscore'].astype(object)
     prev_imgIDPaths = None
     final_arr = None
     curN = 0
@@ -142,20 +148,26 @@ def collateDataSheet(micePath, baseIMGPath, saveFolder):
             mouseSNR = SNRandRSQScore[mouse].info
             snr = mouseSNR.SNR
             rsq = mouseSNR.RSQ
+            ele = mouseSNR.ele
+            azi = mouseSNR.azi
+            onFWHM = mouseSNR.onFWHM
+            offFWHM = mouseSNR.offFWHM
+            n_neurons, _ = snr.shape
+            assert n_neurons == mouseNeurons, f"SNR/RSQ:{n_neurons}; signal:{mouseNeurons} number of neurons do not match"
         except KeyError:
             snr = np.full((mouseNeurons, 2), np.nan)
             rsq = np.full((mouseNeurons, 2), np.nan)
-
+            ele = np.full((mouseNeurons, 2), np.nan)
+            azi = np.full((mouseNeurons, 2), np.nan)
+            onFWHM = np.full((mouseNeurons, 1), np.nan)
+            offFWHM = np.full((mouseNeurons, 1), np.nan)
         
-        values = np.column_stack((miceNames, neurons))
-        cols = finalData.columns.get_indexer(['Mouse', 'Neuron'])
-        finalData.iloc[curN:curN+mouseNeurons, cols] = values
-        finalData.iloc[curN:curN+mouseNeurons, cols] = values
+        values = np.column_stack((miceNames, neurons, azi, ele, onFWHM, offFWHM, rsq, snr))
 
-        for i in range(mouseNeurons):
-            #pandas can't seem to assign tuples using iloc or loc, so have to manually assign each cell
-            finalData.at[curN+i, 'SNRscore'] = snr[i, :]
-            finalData.at[curN+i, 'RSQscore'] = rsq[i, :]
+        cols = finalData.columns.get_indexer(['Mouse', 'Neuron', 'onAzi', 'offAzi', 
+                                              'onEle', 'offEle', 'onFWHM', 'offFWHM',
+                                              'onRSQ','offRSQ', 'onSNR', 'offSNR'])
+        finalData.iloc[curN:curN+mouseNeurons, cols] = values
 
         curN += mouseNeurons
 
@@ -163,7 +175,7 @@ def collateDataSheet(micePath, baseIMGPath, saveFolder):
     saveFolder.mkdir(parents=True, exist_ok=True)
     infoPath = os.path.join(saveFolder, r"info.csv")
     finalData.to_csv(infoPath, index=False)
-    neuronActivationsPath = os.path.join(saveFolder, r"normalisedNeuronActivations")
+    neuronActivationsPath = os.path.join(saveFolder, r"NeuronActivations")
     np.save(neuronActivationsPath, final_arr)
     np.save(os.path.join(saveFolder, r"imagesInTrialOrder"), prev_imgIDPaths)
 
@@ -174,7 +186,7 @@ def getMinSpikesAndFilter(csv_path, activationsPath, spikeThreshold:int=0.1, **k
     nSpikes_raw = np.load(activationsPath)
     normalised_arr = normaliseNeuron(nSpikes_raw)
 
-    #now shaped (4000, neurons)
+    #now shaped (4000, neurons), I think, check:
     a, b = normalised_arr.shape
     if a == 4000:
         t = 0
@@ -182,11 +194,12 @@ def getMinSpikesAndFilter(csv_path, activationsPath, spikeThreshold:int=0.1, **k
         t = 1
 
     nSpikes = (normalised_arr > spikeThreshold).sum(axis=t)
+    assert len(nSpikes) == 3312, "expecting 3312 neurons"
     rawData['nSpikesAboveThreshold'] = nSpikes
-    filterDataSheet(rawData, **kwargs)
+    return filterDataSheet(rawData, **kwargs)
 
 def filterDataSheet(rawData=None, saveFolder:str=r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis",
-                     enforce:bool=True, SNRThresh:float=4, RSQThresh:float=0.33, nSpikesThresh:int=50, RFCheck:bool=True, ResponseThresh:float=0.5, saveName:str="passedFilter.csv", ignoreRSQSNR:bool=True):
+                     enforce:bool=False, nSpikesThresh=25,SNRThresh:float=4, RSQThresh:float=0.33, RFCheck:bool=True, ResponseThresh:float=0.5, saveName:str="passedFilter.csv", ignoreRSQSNR:bool=True):
     
     if rawData is None:
         loadPath = os.path.join(saveFolder, "info.csv")
@@ -205,12 +218,14 @@ def filterDataSheet(rawData=None, saveFolder:str=r"C:\Users\augus\NIN_Stuff\data
 
     for i, row in rawData.iterrows():
         #check SNR and RSQ
-        if (not checkRSQSNR(row['SNRscore'], row['RSQscore'], enforce, SNRThresh, RSQThresh)) and (not ignoreRSQSNR):
+        snr = (row["onSNR"],row["offSNR"])
+        rsq = (row["onRSQ"],row["offRSQ"])
+        if (not checkRSQSNR(snr, rsq, enforce, SNRThresh, RSQThresh)) and (not ignoreRSQSNR):
             continue 
         #Check RF
         if RFCheck and (row['RFscore'] == 0):
             continue
-        #check nSpikes aboveThreshold
+        
         if row['nSpikesAboveThreshold'] < nSpikesThresh:
             continue
 
@@ -227,6 +242,7 @@ def filterDataSheet(rawData=None, saveFolder:str=r"C:\Users\augus\NIN_Stuff\data
 
     savePath = os.path.join(saveFolder, saveName)
     FinalData.to_csv(savePath, index=False)
+    return FinalData
 
 def fetchMiceData(mouse, baseIMGPath, micePath, signalToUse="CaDec"):
     print(f"loading {mouse} data")
@@ -291,41 +307,27 @@ def randomDataPrepMain():
         "Jimmy":r"C:\Users\augus\NIN_Stuff\data\koenData\Jimmy_20241123_1129_normcorr_SPSIG_Res.mat",
         "Lana":r"C:\Users\augus\NIN_Stuff\data\koenData\Lana_20241012_001_normcorr_SPSIG_Res.mat",
     }
-    inputCSV = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringentWithMinSpikes.csv"
-    inputCSV_all = r"c:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\lessStringent.csv"
-    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull"
-    infoPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseType\info.csv"
+    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant"
 
-    muckli4000 = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\Muckli4000Images")
     imagesInOrderPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFbyResponseTypeFull\imagesInTrialOrder.npy"
     images = Path(r"C:\Users\augus\NIN_Stuff\data\koenData\muckli4000npy")
     
     sigPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig"
-    #collateDataSheet(micePath, images, r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig")
+    collateDataSheet(micePath, images, sigPath)
     
-    #filterDataSheet(False, -1, -1, 35, True, 0.5, "lessStringentWithMinSpikes.csv", ignoreRSQSNR=True)
-    #infoPath, neuronActivationsPath = collateDataSheet(micePath,images)
-
     info = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\info.csv"
-    SigActivationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\normalisedNeuronActivations.npy"
-    #getMinSpikesAndFilter(info, SigActivationsPath, 0.09, nSpikesThresh=25, saveFolder=sigPath)
+    SigActivationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\NeuronActivations.npy"
+    getMinSpikesAndFilter(info, SigActivationsPath, 0.09, nSpikesThresh=25, saveFolder=sigPath)
     passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\passedFilter.csv"
 
-    getAllNeuronActivations(SigActivationsPath,passedFilter,sigPath)
+    #getAllNeuronActivations(SigActivationsPath,passedFilter,sigPath)
 
-if __name__ == "__main__":
+def prepCaSig():
     activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig\FilteredNeuronActivations.npy"
     nActivationsPath = r"c:\Users\augus\NIN_Stuff\data\koenData\RFSig\meanCorrectedNeuronActivations.npy"
     savePath =         r"C:\Users\augus\NIN_Stuff\data\koenData\RFSig"
     removeMeanFromActivations(activationsPath,savePath)
-    activations = np.load(activationsPath)
-    newActivations = np.load(nActivationsPath)
-    arr_mean = np.mean(newActivations, axis=0)
 
-    arr_max = np.max(newActivations, axis=0)
-
-    arr_min = np.min(newActivations, axis=0)
-
-    arr_std = np.std(newActivations, axis=0)
-
+if __name__ == "__main__":
+    randomDataPrepMain()
     pass

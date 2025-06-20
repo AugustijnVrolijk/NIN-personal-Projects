@@ -61,7 +61,7 @@ class npImage():
 
         self.name = corPath.stem
 
-    def save(self, destPath:str, extension:str|list=[], defaultExt:str=".png", **kwargs):
+    def save(self, destPath:str, extension:str|list=[], defaultExt:str=".png", makedir=False,**kwargs):
         """
         either the full file name, or a folder to which to 
         save to with the same name as it was loaded in with
@@ -93,6 +93,8 @@ class npImage():
             if not cor_ext in allowedExtension:
                 raise ValueError(f"unrecognised extension {cor_ext}")
             final_path = self._checkPath(corPath, cor_ext)
+            if makedir:
+                final_path.parent.mkdir(parents=True, exist_ok=True)
             self._raw_save(final_path)
         
     def _raw_save(self, path:Path):
