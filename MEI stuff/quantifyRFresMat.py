@@ -2,15 +2,17 @@ import pandas as pd
 import numpy as np
 import os
 import cv2
-
 import shutil
+
 from concurrent.futures import ThreadPoolExecutor
 from dataprep import getMinSpikesAndFilter
 from pathlib import Path
-from imageComp import npImage
+from imageComp import npImage, expand_folder_path
 from tqdm import tqdm
 from PIL import Image
-from imageComp import expand_folder_path
+from ImageAnalysis import smallest_common_divisor_above_threshold
+from skimage.util import view_as_windows
+from skimage.measure import shannon_entropy
 
 def conv_coords(azi, ele):
     """
@@ -202,7 +204,7 @@ def find_totalRF_contour(imgBase, dataBase, imgConds, dataConds, save=False):
     return retDict
 
 @expand_folder_path
-def comp_extra_intra(images, mask):
+def masked_mean_calc(images, mask):
     total = len(images)
     masked_mean = np.ndarray(total)
     masked_sum_mean = np.ndarray(total)
@@ -218,13 +220,32 @@ def findMeanPixelIntensity(contourMasksDict, imgBase):
 
     for cond, mask in contourMasksDict.items():
         cond_path = os.path.join(imgBase, cond)
-        masked_mean, masked_sum_mean = comp_extra_intra(cond_path, mask)
+        masked_mean, masked_sum_mean = masked_mean_calc(cond_path, mask)
         mask_size = (mask.sum()/255)
         print(f"\n{cond}:")
         print(f"Contour pixel intensity mean:            {masked_mean.mean():.2f} ± {masked_mean.std():.2f}")
         print(f"Contour pixel intensity sum mean:        {masked_sum_mean.mean():.2f} ± {masked_sum_mean.std():.2f}")
         print(f"Contour area (n pixels):                 {mask_size}")
         print(f"(Contour pixel intensity sum mean)/area: {masked_sum_mean.mean()/mask_size}")
+
+def compute_entropy_map(img_gray, patch_size=16):
+    height, width = img_gray.shape
+    patch_size = smallest_common_divisor_above_threshold(height, width, patch_size)
+    if patch_size is None or patch_size > 50:
+        raise ValueError("bad patch_size")
+    entropy_map = np.zeros_like(img_gray, dtype=np.float32)
+
+    windows = view_as_windows(img_gray, (patch_size, patch_size), step=patch_size)
+    for i in range(windows.shape[0]):
+        for j in range(windows.shape[1]):
+            patch = windows[i, j]
+            entropy = shannon_entropy(patch)
+            entropy_map[i*patch_size:(i+1)*patch_size, j*patch_size:(j+1)*patch_size] = entropy
+    return entropy_map
+
+def testing_entropy():
+    pass
+
 def cmp_filtered_neurons():
     #getMinSpikesAndFilter(csv_path, activationsPath, spikeThreshold:int=0.1, **kwargs):
     #filterDataSheet(rawData=None, saveFolder:str=r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis",
@@ -254,4 +275,4 @@ def cmp_filtered_neurons():
     pass
 
 if __name__ == "__main__":
-    cmp_filtered_neurons()
+    testing_entropy()

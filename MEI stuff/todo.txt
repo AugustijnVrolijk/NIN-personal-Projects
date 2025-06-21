@@ -1,0 +1,25 @@
+Change how entropy is calculated:
+    1st make the grid chunks bigger?
+    2nd and more important, rather than calculate entropy of one image and then average over all
+                                    do:
+    get full pixel distribution for a chunk of all images, then do entropy calculation
+
+check:
+    that calculating entropy for 2d chunk and a 1d chunk, reshaped as 2d (x, 1) give the same value
+
+    difference if I force the entropy range to be from 0-255 and just using the default entropy
+    possibly using the largest range of each chunk
+
+calculate the population RF:
+    this includes lana and everything, get the contour and area mask. make mask slightly differently:
+        layer area of each ellipse as an increase of 1, so it also conveys the density of the mask
+
+    look at removing outliers, taking some confidence interval, as that is not really feasible maybe trim values below 5 or 10 etc...
+    then normalise mask to be boolean?
+
+check:
+    the mask and contour is all correct, and using it to mask out images also works
+
+calculate entropy of for each condition for the cRF using the mask, and the not cRF using the not mask area
+
+as the cRF will be funny shaped, I need to convert this into a 1d array and then reshape it as (x, 1), so ensure shannon entropy gives the same value

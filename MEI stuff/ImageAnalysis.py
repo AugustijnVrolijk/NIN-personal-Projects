@@ -58,7 +58,7 @@ def compute_edge_grid(img_gray, patch_size=16):
 
     return grid
 
-def load_and_resize_image(image_path, resize = True,**kwargs):
+def load_and_resize_image(image_path, resize = False,**kwargs):
     # Open image using PIL for robustness (handles JPEG, PNG, BMP, etc.)
     max_size = kwargs.pop("max_size", 512)
 
@@ -85,7 +85,7 @@ def analyze_image(image_path, save=False, **kwargs):
         raise ValueError("Unsupported file format")
 
     image_id = image_path.stem  # e.g., '0003'
-    resize = kwargs.pop("resize", True)
+    resize = kwargs.pop("resize", False)
     img_gray = load_and_resize_image(image_path, resize)
 
     saliency_map = compute_saliency_map(img_gray)
