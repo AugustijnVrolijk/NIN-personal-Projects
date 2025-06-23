@@ -2,18 +2,13 @@ import pandas as pd
 import numpy as np
 import os
 import cv2
-import shutil
 import matplotlib.pyplot as plt
 
 from concurrent.futures import ThreadPoolExecutor
-from dataprep import getMinSpikesAndFilter
 from pathlib import Path
 from imageComp import npImage, expand_folder_path
 from tqdm import tqdm
 from PIL import Image
-from ImageAnalysis import smallest_common_divisor_above_threshold, compute_entropy_map
-from skimage.util import view_as_windows
-from skimage.measure import shannon_entropy
 
 def conv_coords(azi, ele):
     """
@@ -186,7 +181,7 @@ def masked_mean_calc(images, mask):
     masked_sum_mean = np.ndarray(total)
     for i, path in enumerate(images):
         #print(f"Processing {i+1}/{total}: {path}")
-        im_arr = cv2.imread(path)
+        im_arr = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
         masked_pixels = im_arr[mask == 255]
         masked_mean[i] = masked_pixels.mean()
         masked_sum_mean[i] = masked_pixels.sum()
@@ -203,6 +198,9 @@ def findMeanPixelIntensity(contourMasksDict, imgBase):
         print(f"Contour pixel intensity sum mean:        {masked_sum_mean.mean():.2f} ± {masked_sum_mean.std():.2f}")
         print(f"Contour area (n pixels):                 {mask_size}")
         print(f"(Contour pixel intensity sum mean)/area: {masked_sum_mean.mean()/mask_size}")
+
+def create_global_mask():
+    pass
 
 def cmp_filtered_neurons():
     #getMinSpikesAndFilter(csv_path, activationsPath, spikeThreshold:int=0.1, **kwargs):
@@ -233,4 +231,4 @@ def cmp_filtered_neurons():
     pass
 
 if __name__ == "__main__":
-    pass
+    cmp_filtered_neurons()
