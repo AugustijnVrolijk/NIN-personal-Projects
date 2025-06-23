@@ -473,9 +473,6 @@ def runOLD():
 
     measureBlobs()
 
-def runRandomTest():
-    pass
-
 def runCaDec():
     activationsPath = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\normalisedNeuronActivations.npy"
     passedFilter = r"C:\Users\augus\NIN_Stuff\data\koenData\RFanalysis\passedFilter.csv"

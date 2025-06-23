@@ -5,10 +5,12 @@ import cv2
 import matplotlib.pyplot as plt
 
 from concurrent.futures import ThreadPoolExecutor
+from dataprep import getMinSpikesAndFilter
 from pathlib import Path
 from imageComp import npImage, expand_folder_path
 from tqdm import tqdm
 from PIL import Image
+from skimage.draw import ellipse
 
 def conv_coords(azi, ele):
     """
@@ -67,7 +69,7 @@ def average_RF(paths:list[str]) -> np.ndarray:
     total_matrix /= len(paths)
     return total_matrix
 
-def mergeCoordInfo(dirName, allInfo, filtered):
+def mergeCoordInfo(dirName, allInfo, filtered, label=""):
     info = pd.read_csv(allInfo)
     filtered = pd.read_csv(filtered)
 
@@ -80,12 +82,13 @@ def mergeCoordInfo(dirName, allInfo, filtered):
     })
     merged_df = filtered_renamed.merge(info, on=['Mouse', 'Neuron'], how="left")
 
-    savePath = os.path.join(dirName, "filtered_with_coords_info.csv")
+    savePath = os.path.join(dirName, f"{label}.csv")
     to_drop = ["RFscore", "respFamiliarNO", "respFamiliarO", "respNovelNO", "respNovelO"]
     merged_df.drop(to_drop, axis=1,inplace=True)
     merged_df.to_csv(savePath, index=False)
+    return savePath
     
-def filterCoordInfo(filtered_all_info_raw):
+def filterCoordInfo(filtered_all_info_raw, label=""):
     def selCondition(row):
         on_ok = row['onRSQ'] > 0.33 and row['onSNR'] > 4
         off_ok = row['offRSQ'] > 0.33 and row['offSNR'] > 4
@@ -107,13 +110,15 @@ def filterCoordInfo(filtered_all_info_raw):
     drop_cols = [f"{cond}{param}" for cond in ['on', 'off'] for param in ['Azi', 'Ele', 'RSQ', 'SNR', 'FWHM']]
     filtered_all_info.drop(columns=drop_cols + ['keep'], axis=1, inplace=True)
 
+    savePath = os.path.join(Path(filtered_all_info_raw).parent, f"filtered_all_info{label}.csv")
+    filtered_all_info.to_csv(savePath, index=False)
+
     flags = ["FamiliarNO","FamiliarO","NovelNO", "NovelO"]
     for flag in flags:
         temp = filtered_all_info[filtered_all_info[flag] == True].copy()
         temp.drop(flags,axis=1, inplace=True)
-        savePath = os.path.join(Path(filtered_all_info_raw).parent, f"{flag}.csv")
+        savePath = os.path.join(Path(filtered_all_info_raw).parent, f"{flag}{label}.csv")
         temp.to_csv(savePath, index=False) 
-
 
 def plot_totalRF(imgBase, dataBase, imgConds, dataConds):
         
@@ -142,32 +147,102 @@ def plot_totalRF(imgBase, dataBase, imgConds, dataConds):
         savePath = os.path.join(imgBase, f"{cond}_drawn.png")
         cv2.imwrite(savePath, image)
 
-def find_totalRF_contour(imgBase, dataBase, imgConds, dataConds, save=False):
+def find_total_contour(dataPath, imgPath):
+    df = pd.read_csv(dataPath)  # with 'x', 'y', 'z' columns
+
+    # Load grayscale image and convert to BGR to draw colored circles
+    Image = cv2.imread(imgPath, cv2.IMREAD_GRAYSCALE)
+    mask = np.zeros_like(Image[:, :])
+
+    # Draw circles
+    for _, row in df.iterrows():
+        center = (conv_coords(row['Azi'], row['Ele']))
+        radius = (conv_radius(row['FWHM']))  # or use a fixed value like 5 if z is not radius
+        cv2.ellipse(mask, center, radius, 
+                    angle=0,startAngle=0,endAngle=360,
+                    color=255, thickness=-1)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    assert len(contours) == 1, f"more than one contour found for {dataPath}, disjointed ROIs"
+    cv2.drawContours(Image, [contours[0]], -1, 255, 2)
+
+    mask = np.zeros_like(Image[:, :])
+    cv2.drawContours(mask, [contours[0]], -1, 255, -1) #filled mask 0 if not contour, 255 if contour
+   
+    return mask, Image
+
+def filterMask(mask, percent_density, show_filtering=False):
+    total = mask.sum()
+    #brute_force solution, no need to optimise really:
+    tmax = np.max(mask)
+    cutoff = None
+    for i in range(1, tmax):
+        t_mask = mask[mask > i]
+        t_total = t_mask.sum()
+        cur_density = t_total/total
+        if cur_density <= percent_density:
+            cutoff = i
+            break
     
+    if show_filtering:
+        import matplotlib
+        from matplotlib.colors import ListedColormap
+        print(mask.max())
+        base_cmap = matplotlib.colormaps.get_cmap("viridis")
+        zero_color = [0.207, 0.003, 0.269, 1.0]
+        new_colors = np.vstack([zero_color, base_cmap(np.arange(mask.max()))])
+        custom_cmap = ListedColormap(new_colors)
+
+        plt.imshow(mask, cmap=custom_cmap)
+        plt.title("population receptive field with density")
+        plt.colorbar(label="n overlapping receptive fields")  # Adds the legend
+        plt.show()
+
+        f_mask = np.where(mask>cutoff, mask, 0)
+        print(f"percent_density: {cur_density}\ncutoff: {cutoff}")
+        plt.imshow(f_mask, cmap=custom_cmap)
+        plt.title(f"population receptive field with {(cur_density*100):.2f}% of density")
+        plt.colorbar(label="n overlapping receptive fields")  # Adds the legend
+        plt.show()
+    
+    f_mask = np.where(mask>cutoff, 1, 0)
+    """plt.imshow(f_mask, cmap="viridis")
+    plt.title(f"population receptive field mask")
+    plt.show()"""
+    return f_mask
+
+def get_pop_rf(dataPath, saveDir=None, saveName="mask"):
+    df = pd.read_csv(dataPath)  # with 'x', 'y', 'z' columns
+        
+    mask = np.zeros((1080, 1920),dtype="uint32")
+
+    # Draw circles
+    for _, row in df.iterrows():
+        x,y = (conv_coords(row['Azi'], row['Ele']))
+        x_radius, y_radius = (conv_radius(row['FWHM']))
+        ys, xs = ellipse(y, x, x_radius, y_radius)
+        # filter out neg values, otherwise it wraps unclosed ellipses to the other side which we don't want
+        pos = (ys >= 0) & (xs >= 0)
+        ys_clean = ys[pos]
+        xs_clean = xs[pos]
+        mask[ys_clean, xs_clean] += 1
+    
+    # filter out the mask, retain percent_density of the volume in the mask 
+    # (i.e. the that percentage of the receptive fields) to remove outliers
+    perc_density = 0.95
+    t_mask = filterMask(mask, perc_density)
+
+    if saveDir:
+        np.save(os.path.join(saveDir, f"{saveName}.npy"), t_mask)
+    return t_mask
+
+def find_t_contour_conds(imgBase, dataBase, imgConds, dataConds, save=False):
     retDict = {}
     for i, cond in enumerate(imgConds):
         dataPath = os.path.join(dataBase, f"{dataConds[i]}.csv")
         imgPath = os.path.join(imgBase, f"{cond}.png")
-        df = pd.read_csv(dataPath)  # with 'x', 'y', 'z' columns
-
-        # Load grayscale image and convert to BGR to draw colored circles
-        Image = cv2.imread(imgPath, cv2.IMREAD_GRAYSCALE)
-        mask = np.zeros_like(Image[:, :])
-
-        # Draw circles
-        for _, row in df.iterrows():
-            center = (conv_coords(row['Azi'], row['Ele']))
-            radius = (conv_radius(row['FWHM']))  # or use a fixed value like 5 if z is not radius
-            cv2.ellipse(mask, center, radius, 
-                        angle=0,startAngle=0,endAngle=360,
-                        color=255, thickness=-1)
-
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        assert len(contours) == 1, f"more than one contour found for {cond}, disjointed ROIs"
-        cv2.drawContours(Image, [contours[0]], -1, 255, 2)
-
-        mask = np.zeros_like(Image[:, :])
-        cv2.drawContours(mask, [contours[0]], -1, 255, -1) #filled mask 0 if not contour, 255 if contour
+        
+        mask, Image = find_total_contour(dataPath, imgPath)
         if save:
             savePath = os.path.join(imgBase, f"{cond}_merged_contour.png")
             cv2.imwrite(savePath, Image)
@@ -198,8 +273,23 @@ def findMeanPixelIntensity(contourMasksDict, imgBase):
         print(f"Contour pixel intensity sum mean:        {masked_sum_mean.mean():.2f} ± {masked_sum_mean.std():.2f}")
         print(f"Contour area (n pixels):                 {mask_size}")
         print(f"(Contour pixel intensity sum mean)/area: {masked_sum_mean.mean()/mask_size}")
+        if not (masked_sum_mean.mean()/mask_size) == masked_mean.mean():
+            print("Contour pixel intensity mean should equal (Contour pixel intensity sum mean)/area, this is strange...")
 
 def create_global_mask():
+    saveName = "passed_RSQ_SNR_noMinSpikes.csv"
+    info_path = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\info.csv"
+    activations = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\NeuronActivations.npy"
+    saveFolder = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant"
+    #orig = getMinSpikesAndFilter(info_path, activations, spikeThreshold=0.00, nSpikesThresh=0, saveFolder=saveFolder,saveName=saveName, ignoreRSQSNR = False)
+    
+    all_RSQ_SNR = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\passed_RSQ_SNR_noMinSpikes.csv"
+    #savePath = mergeCoordInfo(saveFolder, info_path, all_RSQ_SNR, "pass_RSQ_SNR_noMSpikes_ALL")
+    
+    #filterCoordInfo(savePath, label="_to_delete")
+    global_info = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\pass_RSQ_SNR_noMSpikes_ALL_CLEAN.csv"
+    get_pop_rf(global_info, saveFolder)
+    
     pass
 
 def cmp_filtered_neurons():
@@ -226,9 +316,9 @@ def cmp_filtered_neurons():
     imgBase = r"c:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\avg_rf_condition"
     imgConds = ["FamiliarNotOccluded","FamiliarOccluded","NovelNotOccluded","NovelOccluded"]
     dataConds = ["FamiliarNO","FamiliarO","NovelNO","NovelO"]
-    contourDict = find_totalRF_contour(imgBase,saveFolder,imgConds, dataConds)
+    contourDict = find_t_contour_conds(imgBase,saveFolder,imgConds, dataConds)
     findMeanPixelIntensity(contourDict, saveFolder)
     pass
 
 if __name__ == "__main__":
-    cmp_filtered_neurons()
+    create_global_mask()

@@ -6,14 +6,12 @@ import shutil
 import matplotlib.pyplot as plt
 
 from concurrent.futures import ThreadPoolExecutor
-from dataprep import getMinSpikesAndFilter
 from pathlib import Path
 from imageComp import npImage, expand_folder_path
-from tqdm import tqdm
-from PIL import Image
 from ImageAnalysis import smallest_common_divisor_above_threshold, compute_entropy_map
 from skimage.util import view_as_windows
 from skimage.measure import shannon_entropy
+from tqdm import tqdm
 
 def copy_filtered_neurons(source, target, filtered_neurons_csv):
 
@@ -127,7 +125,7 @@ def test_image_entropy(img1, img2):
     return
 
 @expand_folder_path
-def folder_entropy(images, patch_size):
+def folder_entropy_img(images, patch_size):
     all_imgs = []
     for img in images:
         all_imgs.append(cv2.imread(img, cv2.IMREAD_GRAYSCALE))
@@ -156,8 +154,42 @@ def folder_entropy(images, patch_size):
     return entropy_map
 
 @expand_folder_path
+def folder_entropy_mask(images, mask:np.ndarray):
+    assert len(np.unique(mask)) == 2, "folder_entropy_mask calculates entropy using a binary mask"
+    
+    first = cv2.imread(images[0], cv2.IMREAD_GRAYSCALE)
+    assert first.shape == mask.shape, f"img {images[0]} is not the same shape as the provided mask"
+    h, w = mask.shape
+    on_mask_area = mask.sum()
+    off_mask_area = (h*w) - on_mask_area
+
+    mask = mask.flatten()
+    first = first.flatten()
+    intra = first[mask]
+    outra = first[~mask]
+
+    assert len(intra) == on_mask_area, "expected different size on masked array"
+    assert len(outra) == off_mask_area, "expected different size off masked array"
+    
+    for i in tqdm(range(1, len(images))):
+        img = images[i]
+        new_img = cv2.imread(img, cv2.IMREAD_GRAYSCALE).flatten()
+        assert new_img.shape == mask.shape, f"img {img} is not the same shape as the provided mask"
+        t_intra = new_img[mask]
+        t_outra = new_img[~mask]
+        intra = np.concatenate((intra, t_intra))
+        outra = np.concatenate((outra, t_outra))
+
+    assert len(intra) == on_mask_area*len(images), "expected different size on masked array"
+    assert len(outra) == off_mask_area*len(images), "expected different size off masked array"
+    
+    in_mask = shannon_entropy(intra)
+    out_mask = shannon_entropy(outra)
+    return in_mask, out_mask
+
+@expand_folder_path
 def compare_old_and_new(images, patch_size, save_dir):
-    new = folder_entropy(images, patch_size)
+    new = folder_entropy_img(images, patch_size)
     
     plt.title("new")
     plt.imshow(new)
@@ -184,7 +216,7 @@ def run_new_entropy(orig_dir, conditions, patch_size, save_dir):
 
     entropy_dict = {}
     for cond in conditions:
-        entropy = folder_entropy(os.path.join(orig_dir, cond), patch_size)
+        entropy = folder_entropy_img(os.path.join(orig_dir, cond), patch_size)
         entropy_dict[cond] = entropy
         
     gmax = max(np.max(img) for img in entropy_dict.values())
@@ -198,6 +230,15 @@ def run_new_entropy(orig_dir, conditions, patch_size, save_dir):
         plt.savefig(os.path.join(save_dir,f"entropy_{cond}.png"), dpi=300)
         plt.close()
 
+def run_mask_entropy(orig_dir, conditions, mask_path, save_dir):
+    mask = np.load(mask_path).astype(bool)
+
+    for cond in conditions:
+        in_mask, out_mask = folder_entropy_mask(os.path.join(orig_dir, cond), mask)
+        print(in_mask)
+        print(out_mask)
+
+    pass
 
 def images_entropy():
     t_p = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\FamiliarOccluded\Anton_582.png"
@@ -207,7 +248,9 @@ def images_entropy():
     conditions = ["FamiliarNotOccluded","FamiliarOccluded","NovelNotOccluded","NovelOccluded"]
     patch_size = 30
     save_dir = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy"
-    run_new_entropy(orig_dir, conditions, patch_size, save_dir)
+    #run_new_entropy(orig_dir, conditions, patch_size, save_dir)
+    mask_path = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\mask.npy"
+    run_mask_entropy(orig_dir, conditions, mask_path, None)
 
 if __name__ == "__main__":
     images_entropy()
