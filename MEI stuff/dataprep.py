@@ -285,7 +285,7 @@ def getAllNeuronActivations(activationsPath, inputCSV, dest):
     np.save(os.path.join(dest, r"FilteredNeuronActivations"), finalActivations)
     return
 
-def removeMeanFromActivations(activationsPath, savePath):
+def removeMeanFromActivations(activationsPath, saveDir):
     normalisedActivations = np.load(activationsPath)
     arr_mean = np.mean(normalisedActivations, axis=0)
     arr_std = np.std(normalisedActivations, axis=0)
@@ -295,7 +295,7 @@ def removeMeanFromActivations(activationsPath, savePath):
     for i in range(x):
     #subtract mean from each neuron
         normalisedActivations[:, i] = (normalisedActivations[:, i] + 0.2*(arr_std[i])) - arr_mean[i]
-    np.save(os.path.join(savePath, r"meanCorrectedNeuronActivations"), normalisedActivations)
+    np.save(os.path.join(saveDir, r"meanCorrectedNeuronActivations"), normalisedActivations)
 
 def randomDataPrepMain():
     micePath = { #In alphabetical order for the 3312 neurons
@@ -329,5 +329,5 @@ def prepCaSig():
     removeMeanFromActivations(activationsPath,savePath)
 
 if __name__ == "__main__":
-    randomDataPrepMain()
+    #randomDataPrepMain()
     pass

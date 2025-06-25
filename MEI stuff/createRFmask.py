@@ -230,7 +230,7 @@ def get_pop_rf(dataPath, saveDir=None, saveName="mask"):
     # filter out the mask, retain percent_density of the volume in the mask 
     # (i.e. the that percentage of the receptive fields) to remove outliers
     perc_density = 0.95
-    t_mask = filterMask(mask, perc_density)
+    t_mask = filterMask(mask, perc_density, True)
 
     if saveDir:
         np.save(os.path.join(saveDir, f"{saveName}.npy"), t_mask)
@@ -257,7 +257,7 @@ def masked_mean_calc(images, mask):
     for i, path in enumerate(images):
         #print(f"Processing {i+1}/{total}: {path}")
         im_arr = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        masked_pixels = im_arr[mask == 255]
+        masked_pixels = im_arr[mask]
         masked_mean[i] = masked_pixels.mean()
         masked_sum_mean[i] = masked_pixels.sum()
     return masked_mean, masked_sum_mean
@@ -288,8 +288,12 @@ def create_global_mask():
     
     #filterCoordInfo(savePath, label="_to_delete")
     global_info = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\pass_RSQ_SNR_noMSpikes_ALL_CLEAN.csv"
-    get_pop_rf(global_info, saveFolder)
-    
+    #get_pop_rf(global_info, saveFolder)
+    dataConds = ["FamiliarNO","FamiliarO","NovelNO","NovelO"]
+    for info in dataConds:
+        path = os.path.join(saveFolder,f"{info}.csv")
+        get_pop_rf(path, saveFolder, f"{info}_cond")
+
     pass
 
 def cmp_filtered_neurons():

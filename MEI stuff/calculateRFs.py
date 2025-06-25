@@ -1,9 +1,10 @@
 import numpy as np
 import os
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
 import cv2
+import matplotlib.pyplot as plt
 
+from concurrent.futures import ThreadPoolExecutor
 from skimage import measure
 from tqdm import tqdm
 from PIL import Image
@@ -13,6 +14,7 @@ from imageComp import opti_weighted_average_images, npImage, expand_folder_path
 from ImageAnalysis import analyze_image_folder, checkName
 from dataprep import getNeuronActivations
 from scipy.ndimage import gaussian_filter
+from scipy.stats import norm
 
 def normaliseNeuron(arr:np.ndarray, idx:int=None):
     #assume format is #trials , neurons
@@ -451,7 +453,58 @@ def globalNormalise(rootPath, folderNames, DestPath):
 
     return t_max, t_min
 
-def generateRandoms():
+def generateRandoms(activations, saveDir, n=1000):
+    activs = np.load(activations)
+    print(activs.shape)
+    #step 1, find the distribution of spike intensity
+    #step 2, generate fake random images according to this distribution
+    #step 3, doneneuron_idx = np.random.randint(W.shape[1])
+    weights = activs[:, 0]
+
+    # Plot the weights
+    plt.figure(figsize=(10, 4))
+    plt.plot(weights)
+    plt.title(f'Weights for Neuron {0}')
+    plt.xlabel('Weight Index')
+    plt.ylabel('Weight Value')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    all_weights = activs.flatten()
+
+    # Plot histogram
+    plt.figure(figsize=(6, 4))
+    plt.hist(all_weights, bins=100, density=True, alpha=0.7)
+    plt.title('Histogram of All Weights')
+    plt.xlabel('Weight Value')
+    plt.ylabel('Density')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    W_random = np.random.choice(all_weights, size=(4000, n), replace=True)
+    # Plot a synthetic neuron's weights
+    plt.figure(figsize=(10, 4))
+    plt.plot(W_random[:, 0])
+    plt.title('Weights for Random Neuron 0')
+    plt.xlabel('Weight Index')
+    plt.ylabel('Weight Value')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    # Plot histogram to compare
+    plt.figure(figsize=(6, 4))
+    plt.hist(W_random.flatten(), bins=100, density=True, alpha=0.7, label='Synthetic')
+    plt.hist(all_weights, bins=100, density=True, alpha=0.5, label='Original')
+    plt.title('Weight Distributions: Original vs Synthetic')
+    plt.xlabel('Weight Value')
+    plt.ylabel('Density')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    np.save(os.path.join(saveDir, f"meanCorrectedRandomActivations.npy"), W_random)
     pass
 
 def runOLD():
@@ -523,5 +576,13 @@ def runCaSig():
 
     normalAnalysis(destPath, analysis_path, p1)
 
+def runRandom():
+    activations = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\meanCorrectedNeuronActivations.npy"
+    saveDir = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant"
+    #generateRandoms(activations, saveDir)
+    randomActivs = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\meanCorrectedRandomActivations.npy"
+    
+    pass
+
 if __name__ == "__main__":
-    runCaSig()
+    runRandom()

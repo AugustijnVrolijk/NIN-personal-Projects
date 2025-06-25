@@ -7,11 +7,12 @@ import matplotlib.pyplot as plt
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from imageComp import npImage, expand_folder_path
+from imageComp import expand_folder_path
 from ImageAnalysis import smallest_common_divisor_above_threshold, compute_entropy_map
 from skimage.util import view_as_windows
 from skimage.measure import shannon_entropy
 from tqdm import tqdm
+from createRFmask import masked_mean_calc
 
 def copy_filtered_neurons(source, target, filtered_neurons_csv):
 
@@ -155,37 +156,32 @@ def folder_entropy_img(images, patch_size):
 
 @expand_folder_path
 def folder_entropy_mask(images, mask:np.ndarray):
-    assert len(np.unique(mask)) == 2, "folder_entropy_mask calculates entropy using a binary mask"
+    
+    if np.array_equal(np.unique(mask), [0, 1]):
+        mask = mask.astype(bool)
+    elif not np.array_equal(np.unique(mask), [False, True]):
+        raise ValueError("Mask must be binary only")
     
     first = cv2.imread(images[0], cv2.IMREAD_GRAYSCALE)
     assert first.shape == mask.shape, f"img {images[0]} is not the same shape as the provided mask"
-    h, w = mask.shape
     on_mask_area = mask.sum()
-    off_mask_area = (h*w) - on_mask_area
 
     mask = mask.flatten()
     first = first.flatten()
-    intra = first[mask]
-    outra = first[~mask]
-
-    assert len(intra) == on_mask_area, "expected different size on masked array"
-    assert len(outra) == off_mask_area, "expected different size off masked array"
+    vals = first[mask]
+    assert len(vals) == on_mask_area, "error getting masked values"
     
     for i in tqdm(range(1, len(images))):
         img = images[i]
         new_img = cv2.imread(img, cv2.IMREAD_GRAYSCALE).flatten()
         assert new_img.shape == mask.shape, f"img {img} is not the same shape as the provided mask"
-        t_intra = new_img[mask]
-        t_outra = new_img[~mask]
-        intra = np.concatenate((intra, t_intra))
-        outra = np.concatenate((outra, t_outra))
+        t_vals = new_img[mask]
+        vals = np.concatenate((vals, t_vals))
 
-    assert len(intra) == on_mask_area*len(images), "expected different size on masked array"
-    assert len(outra) == off_mask_area*len(images), "expected different size off masked array"
+    assert len(vals) == on_mask_area*len(images), "error getting masked values, not all images were processed"
     
-    in_mask = shannon_entropy(intra)
-    out_mask = shannon_entropy(outra)
-    return in_mask, out_mask
+    entropy = shannon_entropy(vals)
+    return entropy
 
 @expand_folder_path
 def compare_old_and_new(images, patch_size, save_dir):
@@ -212,7 +208,7 @@ def compare_old_and_new(images, patch_size, save_dir):
     plt.imsave(os.path.join(save_dir,f"entropy_new.png"), new, cmap='hot')
     plt.imsave(os.path.join(save_dir,f"entropy_old.png"), old, cmap='hot')
 
-def run_new_entropy(orig_dir, conditions, patch_size, save_dir):
+def run_new_entropy(orig_dir, conditions, patch_size, save_dir, saveAsRaw=False):
 
     entropy_dict = {}
     for cond in conditions:
@@ -222,6 +218,7 @@ def run_new_entropy(orig_dir, conditions, patch_size, save_dir):
     gmax = max(np.max(img) for img in entropy_dict.values())
     gmin = min(np.min(img) for img in entropy_dict.values())
 
+    r_paths = []
     for cond, entropy in entropy_dict.items():
         im = plt.imshow(entropy, cmap='viridis', vmin=gmin, vmax=gmax)
         plt.colorbar(im, label="Entropy")  # Adds the legend
@@ -229,16 +226,79 @@ def run_new_entropy(orig_dir, conditions, patch_size, save_dir):
         plt.tight_layout()
         plt.savefig(os.path.join(save_dir,f"entropy_{cond}.png"), dpi=300)
         plt.close()
+        if saveAsRaw:
+            save_path = os.path.join(save_dir,f"entropy_{cond}_raw.png")
+            r_paths.append(save_path)
+            np.save(save_path, entropy)
+    return r_paths   
+    
+def mean_cond_entropy(r_paths, cond, mask):
+    
+    if np.array_equal(np.unique(mask), [0, 1]):
+        mask = mask.astype(bool)
+    elif not np.array_equal(np.unique(mask), [False, True]):
+        raise ValueError("Mask must be binary only")
+    
+    cor_path = None
+    for p in r_paths:
+        if cond in p:
+            cor_path = p
+    
+    first:np.ndarray = np.load(cor_path)
+    assert first.shape == mask.shape, f"img {cor_path} is not the same shape as the provided mask"
+    on_mask_area = mask.sum()
 
-def run_mask_entropy(orig_dir, conditions, mask_path, save_dir):
+    mask = mask.flatten()
+    first = first.flatten()
+    vals = first[mask]
+    assert len(vals) == on_mask_area, "error getting masked values"
+    
+    return vals
+
+def run_mask_entropy(orig_dir, conditions, mask_path, save_dir, r_paths):
     mask = np.load(mask_path).astype(bool)
+    rhs = np.zeros_like(mask)
+    rhs[:, 1080:] = 1
+    msg = ""
 
     for cond in conditions:
-        in_mask, out_mask = folder_entropy_mask(os.path.join(orig_dir, cond), mask)
-        print(in_mask)
-        print(out_mask)
+        folder_path = os.path.join(orig_dir, cond)
+        in_mask = folder_entropy_mask(folder_path, mask)
+        out_mask = folder_entropy_mask(folder_path, ~mask)
+        rhs_mask = folder_entropy_mask(folder_path, rhs)
+        new_txt = (f"condition {cond}:\n"
+                  f"  Pooled pixel entropy:\n\n"
+                  f"    population RF:   {in_mask:.3f}\n"     
+                  f"    everything else: {out_mask:.3f}\n"      
+                  f"    right-hand side: {rhs_mask:.3f}\n\n")
+        
+        msg += new_txt      
 
-    pass
+        in_mask = mean_cond_entropy(r_paths, cond, mask)
+        out_mask = mean_cond_entropy(r_paths, cond, ~mask)
+        rhs_mask = mean_cond_entropy(r_paths, cond, rhs)
+        new_txt = (f"  Mean spatial-chunk entropy:\n\n"
+                  f"    population RF:   {in_mask.mean():.3f} +/- {in_mask.std():.3f}\n"     
+                  f"    everything else: {out_mask.mean():.3f} +/- {out_mask.std():.3f}\n"      
+                  f"    right-hand side: {rhs_mask.mean():.3f} +/- {rhs_mask.std():.3f}\n\n")
+        
+        msg += new_txt
+
+        in_mask, _ = masked_mean_calc(folder_path, mask)
+        out_mask, _ = masked_mean_calc(folder_path, ~mask)
+        rhs_mask, _ = masked_mean_calc(folder_path, rhs)
+        new_txt = (f"  Mean pixel intensity:\n\n"
+                  f"    population RF:   {in_mask.mean():.3f} +/- {in_mask.std():.3f}\n"     
+                  f"    everything else: {out_mask.mean():.3f} +/- {out_mask.std():.3f}\n"      
+                  f"    right-hand side: {rhs_mask.mean():.3f} +/- {rhs_mask.std():.3f}\n\n\n")
+        
+        msg += new_txt    
+
+    savePath = os.path.join(save_dir, f"results.txt")
+    with open(savePath, "w") as file:
+        file.write(msg)
+
+    return
 
 def images_entropy():
     t_p = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\FamiliarOccluded\Anton_582.png"
@@ -248,9 +308,13 @@ def images_entropy():
     conditions = ["FamiliarNotOccluded","FamiliarOccluded","NovelNotOccluded","NovelOccluded"]
     patch_size = 30
     save_dir = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy"
-    #run_new_entropy(orig_dir, conditions, patch_size, save_dir)
+    #r_paths = run_new_entropy(orig_dir, conditions, patch_size, save_dir, saveAsRaw=True)
+    r_paths = [r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy\entropy_FamiliarNotOccluded_raw.png.npy",
+               r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy\entropy_FamiliarOccluded_raw.png.npy",
+               r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy\entropy_NovelNotOccluded_raw.png.npy",
+               r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy\entropy_NovelOccluded_raw.png.npy"]
     mask_path = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\mask.npy"
-    run_mask_entropy(orig_dir, conditions, mask_path, None)
+    run_mask_entropy(orig_dir, conditions, mask_path, save_dir, r_paths)
 
 if __name__ == "__main__":
     images_entropy()
