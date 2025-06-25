@@ -13,6 +13,28 @@ from skimage.util import view_as_windows
 from skimage.measure import shannon_entropy
 from tqdm import tqdm
 from createRFmask import masked_mean_calc
+from scipy.stats import entropy as scipy_entropy
+
+def relative_entropy(target:np.ndarray, base:np.ndarray) -> float:
+    target = target.flatten()
+    base = base.flatten()
+    bins = np.linspace(0, 255, num=256)  # 256 bins
+
+    # histograms from datasets A and B
+    hist_A, _ = np.histogram(target, bins=bins)
+    hist_B, _ = np.histogram(base, bins=bins)
+
+    epsilon = 1e-4
+    pk = hist_A + epsilon
+    qk = hist_B + epsilon
+
+    # Normalize to get proper probability distributions
+    pk = pk / pk.sum()
+    qk = qk / qk.sum()
+
+    # Compute KL divergence
+    kl_div = scipy_entropy(pk, qk, base=2)
+    return kl_div
 
 def copy_filtered_neurons(source, target, filtered_neurons_csv):
 
@@ -305,7 +327,7 @@ def images_entropy():
     t_p_2 = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\FamiliarOccluded\Feyenoord_462.png"
     #test_image_entropy(t_p, t_p_2)
     orig_dir = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant"
-    conditions = ["FamiliarNotOccluded","FamiliarOccluded","NovelNotOccluded","NovelOccluded"]
+    conditions = ["FamiliarNotOccluded","FamiliarOccluded","NovelNotOccluded","NovelOccluded", "randomRFs"]
     patch_size = 30
     save_dir = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy"
     #r_paths = run_new_entropy(orig_dir, conditions, patch_size, save_dir, saveAsRaw=True)
@@ -314,7 +336,8 @@ def images_entropy():
                r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy\entropy_NovelNotOccluded_raw.png.npy",
                r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\entropy\entropy_NovelOccluded_raw.png.npy"]
     mask_path = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\mask.npy"
-    run_mask_entropy(orig_dir, conditions, mask_path, save_dir, r_paths)
+    #run_mask_entropy(orig_dir, conditions, mask_path, save_dir, r_paths)
+    run_new_entropy(orig_dir, ["randomRFs"], patch_size, save_dir)
 
 if __name__ == "__main__":
     images_entropy()

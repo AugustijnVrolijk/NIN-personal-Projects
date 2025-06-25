@@ -507,6 +507,39 @@ def generateRandoms(activations, saveDir, n=1000):
     np.save(os.path.join(saveDir, f"meanCorrectedRandomActivations.npy"), W_random)
     pass
 
+def calcRandomRF(neuronActivations, ImagesPath, saveDir, iter):
+    extension = ".png"
+    saveName = f"random_{iter}{extension}"
+    try:
+        raw_RF = opti_weighted_average_images(ImagesPath, neuronActivations).astype(np.float64)
+        corArr =  np.clip(raw_RF, 0, 255).astype(np.uint8)
+        blurred = gaussian_filter(corArr, sigma=8)
+        receptive_field = Image.fromarray(blurred, mode='L')
+        receptive_field.save(os.path.join(saveDir, saveName), format='PNG', optimize=True)
+
+        print(f"Completed saving: {iter}", flush=True)
+        return
+    except Exception as e:
+        print(f"Failed to process neuron  {saveName}, {e}", flush=True)
+        return
+
+def paraCalcRandomRFs(activationsPath, ImagesPath, saveFolder):
+    neuronActivations = np.load(activationsPath)
+    imgIDPaths = np.load(ImagesPath, allow_pickle=True)
+
+    t, n = neuronActivations.shape
+    assert t == 4000
+
+    futures = []
+    final = []
+    with ThreadPoolExecutor() as executor:
+        for i in range(n):
+            print(f"processing: neuron {i}/{n}")
+            futures.append(executor.submit(calcRandomRF, neuronActivations[:, i], imgIDPaths, saveFolder, i))
+        for r in futures:
+            final.append(r.result())
+    return
+
 def runOLD():
     micePath = { #In alphabetical order for the 3312 neurons
         "Ajax":r"C:\Users\augus\NIN_Stuff\data\koenData\Ajax_20241012_001_normcorr_SPSIG_Res.mat",
@@ -581,7 +614,9 @@ def runRandom():
     saveDir = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant"
     #generateRandoms(activations, saveDir)
     randomActivs = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\meanCorrectedRandomActivations.npy"
-    
+    imgs = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\imagesInTrialOrder.npy"
+    RFsaveDir = r"C:\Users\augus\NIN_Stuff\data\koenData\newRFQuant\randomRFs"
+    paraCalcRandomRFs(randomActivs, imgs, RFsaveDir)
     pass
 
 if __name__ == "__main__":
